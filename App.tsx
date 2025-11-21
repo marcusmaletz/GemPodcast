@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import ScriptSection from './components/ScriptSection';
-import AudioSection from './components/AudioSection';
+import ScriptSection from './components/ScriptSection.tsx';
+import AudioSection from './components/AudioSection.tsx';
 import { Mic2 } from 'lucide-react';
 
 const App: React.FC = () => {

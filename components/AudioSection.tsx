@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square } from 'lucide-react';
-import { VoiceName, BackgroundMusicPreset } from '../types';
-import { generatePodcastAudio, generateVoicePreview } from '../services/geminiService';
-import { decodeBase64Audio, audioBufferToWav, audioBufferToMp3, mixAudioBuffers, generateProceduralTrack } from '../utils/audioUtils';
+import { VoiceName, BackgroundMusicPreset } from '../types.ts';
+import { generatePodcastAudio, generateVoicePreview } from '../services/geminiService.ts';
+import { decodeBase64Audio, audioBufferToWav, audioBufferToMp3, mixAudioBuffers, generateProceduralTrack } from '../utils/audioUtils.ts';
 
 interface AudioSectionProps {
   script: string;

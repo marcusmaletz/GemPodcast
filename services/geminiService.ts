@@ -1,5 +1,5 @@
 import { GoogleGenAI, Modality } from "@google/genai";
-import { GeneratedScriptResponse, VoiceName } from "../types";
+import { GeneratedScriptResponse, VoiceName } from "../types.ts";
 
 // Ensure API Key is present
 const API_KEY = process.env.API_KEY;

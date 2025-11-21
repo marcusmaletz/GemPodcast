@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2, Search, Sparkles, Globe, Users } from 'lucide-react';
-import { generateScript } from '../services/geminiService';
-import { GeneratedScriptResponse } from '../types';
+import { generateScript } from '../services/geminiService.ts';
+import { GeneratedScriptResponse } from '../types.ts';
 
 interface ScriptSectionProps {
   onScriptReady: (script: string, hostName: string, guestName: string) => void;
