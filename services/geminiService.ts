@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import { GeneratedScriptResponse, VoiceName } from "../types.ts";
 
@@ -63,8 +64,13 @@ export const generateScript = async (
       });
     }
 
+    // Generate formatted Title: "AI-Podcast: [Topic] - [Date]"
+    const dateStr = new Date().toLocaleDateString('de-DE');
+    const shortTopic = topic.length > 30 ? topic.substring(0, 27) + "..." : topic;
+    const formattedTitle = `AI-Podcast: ${shortTopic} - ${dateStr}`;
+
     return {
-      title: `Podcast: ${topic}`,
+      title: formattedTitle,
       script: text,
       searchSources
     };

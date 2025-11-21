@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc } from 'lucide-react';
+import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc, Mail, X, Send, FileAudio, CheckCircle2 } from 'lucide-react';
 import { VoiceName, MusicSlotIndex, StoredAudioFile } from '../types.ts';
 import { generatePodcastAudio, generateVoicePreview } from '../services/geminiService.ts';
 import { 
@@ -10,18 +10,25 @@ import {
   audioBufferToMp3, 
   mixPodcastSequence,
   storeAudioFile,
-  getAudioFile
+  getAudioFile,
+  deleteAudioFile,
+  blobToBase64
 } from '../utils/audioUtils.ts';
 
 interface AudioSectionProps {
   script: string;
   hostName: string;
   guestName: string;
+  topic: string;
 }
 
-const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName }) => {
-  const [hostVoice, setHostVoice] = useState<VoiceName>(VoiceName.Kore);
-  const [guestVoice, setGuestVoice] = useState<VoiceName>(VoiceName.Puck);
+// Hardcoded N8N Webhook URL
+const N8N_WEBHOOK_URL = 'https://anymal.app.n8n.cloud/webhook/send_mail';
+
+const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName, topic }) => {
+  // Initialize with storage or default
+  const [hostVoice, setHostVoice] = useState<VoiceName>(() => (localStorage.getItem('hostVoice') as VoiceName) || VoiceName.Kore);
+  const [guestVoice, setGuestVoice] = useState<VoiceName>(() => (localStorage.getItem('guestVoice') as VoiceName) || VoiceName.Puck);
   
   // Files State
   const [introFile, setIntroFile] = useState<StoredAudioFile | null>(null);
@@ -31,21 +38,34 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
   
   // Selection State
   const [selectedMusicIndex, setSelectedMusicIndex] = useState<MusicSlotIndex>(-1);
-  const [musicVolume, setMusicVolume] = useState<number>(0.10); // Default 10%
+  
+  // Volume States (with defaults)
+  const [musicVolume, setMusicVolume] = useState<number>(0.10); 
+  const [introVolume, setIntroVolume] = useState<number>(0.7); 
+  const [outroVolume, setOutroVolume] = useState<number>(0.7); 
   
   // Generation State
   const [loading, setLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Preview State
   const [previewLoading, setPreviewLoading] = useState<string | null>(null); 
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   
+  // Email Modal State
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailSentSuccess, setEmailSentSuccess] = useState(false);
+
   const audioRef = useRef<HTMLAudioElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- Initialization: Load from DB ---
+  // --- Initialization: Load from DB & LocalStorage ---
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -61,12 +81,19 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
         
         setMusicSlots([slotA, slotB, slotC]);
 
-        // Restore selection
+        // Restore selection and volumes
         const savedIndex = localStorage.getItem('selectedMusicIndex');
         if (savedIndex !== null) setSelectedMusicIndex(parseInt(savedIndex) as MusicSlotIndex);
 
         const savedVol = localStorage.getItem('musicVolume');
         if (savedVol !== null) setMusicVolume(parseFloat(savedVol));
+
+        const savedIntroVol = localStorage.getItem('introVolume');
+        if (savedIntroVol !== null) setIntroVolume(parseFloat(savedIntroVol));
+
+        const savedOutroVol = localStorage.getItem('outroVolume');
+        if (savedOutroVol !== null) setOutroVolume(parseFloat(savedOutroVol));
+
       } catch (e) {
         console.error("Failed to load stored audio files", e);
       }
@@ -82,6 +109,22 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
   useEffect(() => {
     localStorage.setItem('musicVolume', musicVolume.toString());
   }, [musicVolume]);
+
+  useEffect(() => {
+    localStorage.setItem('introVolume', introVolume.toString());
+  }, [introVolume]);
+
+  useEffect(() => {
+    localStorage.setItem('outroVolume', outroVolume.toString());
+  }, [outroVolume]);
+
+  useEffect(() => {
+    localStorage.setItem('hostVoice', hostVoice);
+  }, [hostVoice]);
+
+  useEffect(() => {
+    localStorage.setItem('guestVoice', guestVoice);
+  }, [guestVoice]);
 
   // --- Clean up ---
   useEffect(() => {
@@ -141,6 +184,30 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     e.target.value = '';
   };
 
+  const handleFileDelete = async (type: 'intro' | 'outro' | 'music', index?: number) => {
+    try {
+      if (type === 'intro') {
+        await deleteAudioFile('intro');
+        setIntroFile(null);
+        if (playingPreview === 'intro') stopPreview();
+      } else if (type === 'outro') {
+        await deleteAudioFile('outro');
+        setOutroFile(null);
+        if (playingPreview === 'outro') stopPreview();
+      } else if (type === 'music' && typeof index === 'number') {
+        await deleteAudioFile(`music_${index}`);
+        const newSlots = [...musicSlots];
+        newSlots[index] = null;
+        setMusicSlots(newSlots);
+        if (selectedMusicIndex === index) setSelectedMusicIndex(-1);
+        if (playingPreview === `music_${index}`) stopPreview();
+      }
+    } catch (err) {
+      console.error("Failed to delete file", err);
+      alert("Failed to delete file.");
+    }
+  };
+
   const handlePreviewFile = (file: StoredAudioFile | null, id: string) => {
     if (!file) return;
     if (playingPreview === id) {
@@ -182,6 +249,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     setLoading(true);
     setError(null);
     setAudioUrl(null);
+    setAudioBlob(null);
 
     try {
       // 1. Get Voice Audio
@@ -213,13 +281,16 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
         musicBuffer, 
         introBuffer, 
         outroBuffer, 
-        musicVolume
+        musicVolume,
+        introVolume,
+        outroVolume
       );
 
       // 6. Encode
       const mp3Blob = audioBufferToMp3(mixedBuffer);
       const url = URL.createObjectURL(mp3Blob);
       setAudioUrl(url);
+      setAudioBlob(mp3Blob);
       
       await ctx.close();
 
@@ -228,6 +299,79 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
       setError("Failed to generate audio. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openEmailModal = () => {
+    // Prepare default content in German
+    const dateStr = new Date().toLocaleDateString('de-DE');
+    const shortTopic = topic.length > 30 ? topic.substring(0, 27) + "..." : topic;
+    const subject = `AI-Podcast: ${shortTopic} - ${dateStr}`;
+    const scriptPreview = script.length > 800 ? script.substring(0, 800) + "..." : script;
+    
+    const body = `Hallo,
+
+hier ist die neue Podcast-Folge, die wir über "${topic}" generiert haben.
+
+🎙️ THEMA: ${topic}
+🗣️ SPRECHER: ${hostName} & ${guestName}
+📅 DATUM: ${dateStr}
+
+📝 SKRIPT VORSCHAU:
+================================
+${scriptPreview}
+================================
+
+Beste Grüße,
+Gemini Podcast Studio`;
+
+    setEmailSubject(subject);
+    setEmailBody(body);
+    setEmailTo('');
+    setEmailSentSuccess(false);
+    setShowEmailModal(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailTo.trim() || !audioBlob) return;
+    setIsSendingEmail(true);
+
+    try {
+      const base64Audio = await blobToBase64(audioBlob);
+      const filename = `AI-Podcast_${new Date().toISOString().slice(0,10)}.mp3`;
+
+      const payload = {
+        to: emailTo,
+        subject: emailSubject,
+        body: emailBody,
+        attachmentName: filename,
+        attachmentBase64: base64Audio
+      };
+
+      const response = await fetch(N8N_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      setIsSendingEmail(false);
+      setEmailSentSuccess(true);
+      
+      // Close modal after success
+      setTimeout(() => {
+        setShowEmailModal(false);
+      }, 2000);
+
+    } catch (err) {
+      console.error("Email send failed", err);
+      setIsSendingEmail(false);
+      alert("Fehler beim Senden der E-Mail. Bitte versuchen Sie es erneut.");
     }
   };
 
@@ -277,13 +421,15 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
                    {isPreviewing ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current ml-0.5" />}
                 </button>
                 
-                <label className="p-1.5 text-slate-500 hover:text-purple-400 cursor-pointer">
-                  <Trash2 className="w-3 h-3 hover:text-red-400" onClick={(e) => {
-                    e.preventDefault();
-                    // TODO: Add delete function if needed, for now just re-upload is fine
-                  }}/>
-                  <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFileUpload(e, 'music', index)} />
-                </label>
+                <button 
+                  className="p-1.5 text-slate-500 hover:text-red-400 cursor-pointer z-20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFileDelete('music', index);
+                  }}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
             </div>
           </>
         )}
@@ -371,17 +517,39 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
                <div className={`bg-slate-900 rounded-lg p-4 border ${introFile ? 'border-purple-500/50' : 'border-slate-700'}`}>
                   <div className="flex justify-between items-start mb-2">
                      <span className="text-sm font-medium text-white">Intro</span>
-                     {introFile ? (
-                        <button onClick={() => handlePreviewFile(introFile, 'intro')} className="text-purple-400 hover:text-white">
-                           {playingPreview === 'intro' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
-                        </button>
-                     ) : null}
+                     <div className="flex gap-2">
+                       {introFile && (
+                          <>
+                            <button onClick={() => handlePreviewFile(introFile, 'intro')} className="text-purple-400 hover:text-white">
+                               {playingPreview === 'intro' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
+                            </button>
+                            <button onClick={() => handleFileDelete('intro')} className="text-slate-500 hover:text-red-400">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                       )}
+                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 mb-3">
                       <label className="flex-1 truncate text-xs text-slate-400 bg-slate-800 py-2 px-3 rounded cursor-pointer hover:bg-slate-700 transition-colors">
                           {introFile ? introFile.name : "Upload MP3..."}
                           <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFileUpload(e, 'intro')} />
                       </label>
+                  </div>
+                  {/* Intro Volume */}
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="w-3 h-3 text-slate-500" />
+                    <input 
+                        type="range" 
+                        min="0" 
+                        max="1.2" 
+                        step="0.1" 
+                        value={introVolume}
+                        onChange={(e) => setIntroVolume(parseFloat(e.target.value))}
+                        className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                        title={`Volume: ${Math.round(introVolume * 100)}%`}
+                    />
+                    <span className="text-[10px] text-slate-500 w-6 text-right">{Math.round(introVolume * 100)}%</span>
                   </div>
                </div>
 
@@ -389,17 +557,39 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
                <div className={`bg-slate-900 rounded-lg p-4 border ${outroFile ? 'border-purple-500/50' : 'border-slate-700'}`}>
                   <div className="flex justify-between items-start mb-2">
                      <span className="text-sm font-medium text-white">Outro</span>
-                     {outroFile ? (
-                        <button onClick={() => handlePreviewFile(outroFile, 'outro')} className="text-purple-400 hover:text-white">
-                           {playingPreview === 'outro' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
-                        </button>
-                     ) : null}
+                     <div className="flex gap-2">
+                       {outroFile && (
+                          <>
+                            <button onClick={() => handlePreviewFile(outroFile, 'outro')} className="text-purple-400 hover:text-white">
+                               {playingPreview === 'outro' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
+                            </button>
+                             <button onClick={() => handleFileDelete('outro')} className="text-slate-500 hover:text-red-400">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                       )}
+                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 mb-3">
                       <label className="flex-1 truncate text-xs text-slate-400 bg-slate-800 py-2 px-3 rounded cursor-pointer hover:bg-slate-700 transition-colors">
                           {outroFile ? outroFile.name : "Upload MP3..."}
                           <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFileUpload(e, 'outro')} />
                       </label>
+                  </div>
+                   {/* Outro Volume */}
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="w-3 h-3 text-slate-500" />
+                    <input 
+                        type="range" 
+                        min="0" 
+                        max="1.2" 
+                        step="0.1" 
+                        value={outroVolume}
+                        onChange={(e) => setOutroVolume(parseFloat(e.target.value))}
+                        className="w-full h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                        title={`Volume: ${Math.round(outroVolume * 100)}%`}
+                    />
+                    <span className="text-[10px] text-slate-500 w-6 text-right">{Math.round(outroVolume * 100)}%</span>
                   </div>
                </div>
             </div>
@@ -494,14 +684,25 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
                     </p>
                   </div>
                 </div>
-                <a
-                  href={audioUrl}
-                  download="gemini-podcast.mp3"
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-                  title="Download MP3"
-                >
-                  <Download className="w-5 h-5" />
-                </a>
+                <div className="flex gap-2">
+                  <button
+                    onClick={openEmailModal}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors border border-slate-600"
+                    title="Send via Email"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span className="text-sm font-medium">Email</span>
+                  </button>
+                  <a
+                    href={audioUrl}
+                    download={`AI-Podcast_${new Date().toISOString().slice(0,10)}.mp3`}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors shadow-lg shadow-purple-900/20"
+                    title="Download MP3"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="text-sm font-medium">Download</span>
+                  </a>
+                </div>
               </div>
               
               <audio 
@@ -515,6 +716,102 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
           </div>
         )}
       </div>
+
+      {/* EMAIL MODAL */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setShowEmailModal(false)} />
+          <div className="relative bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                 <Mail className="w-5 h-5 text-purple-400" /> Podcast per E-Mail versenden
+               </h3>
+               <button onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-white">
+                 <X className="w-5 h-5" />
+               </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">An (Empfänger)</label>
+                <input 
+                  type="email"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  placeholder="freund@beispiel.de"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 px-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Betreff</label>
+                <input 
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Nachricht</label>
+                <textarea 
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  rows={8}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 px-3 text-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 p-3 bg-slate-800/50 border border-slate-700 rounded-lg">
+                <div className="w-10 h-10 bg-purple-600/20 rounded flex items-center justify-center text-purple-400">
+                  <FileAudio className="w-5 h-5" />
+                </div>
+                <div>
+                   <div className="text-sm font-medium text-white">podcast_episode.mp3</div>
+                   <div className="text-xs text-slate-500">High Quality MP3 • Anhang</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-slate-800 flex justify-end gap-3 bg-slate-900 rounded-b-xl">
+               <button 
+                 onClick={() => setShowEmailModal(false)}
+                 className="px-4 py-2 text-slate-300 hover:text-white transition-colors font-medium"
+               >
+                 Abbrechen
+               </button>
+               <button 
+                 onClick={handleSendEmail}
+                 disabled={isSendingEmail || !emailTo.trim()}
+                 className={`px-6 py-2 rounded-lg flex items-center gap-2 font-medium text-white transition-all
+                   ${isSendingEmail || !emailTo.trim()
+                     ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                     : 'bg-purple-600 hover:bg-purple-500 shadow-lg shadow-purple-900/20'
+                   }
+                 `}
+               >
+                 {isSendingEmail ? (
+                   <>
+                     <Loader2 className="w-4 h-4 animate-spin" /> Senden...
+                   </>
+                 ) : emailSentSuccess ? (
+                   <>
+                     <CheckCircle2 className="w-4 h-4" /> Gesendet!
+                   </>
+                 ) : (
+                   <>
+                     <Send className="w-4 h-4" /> Abschicken
+                   </>
+                 )}
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

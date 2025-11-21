@@ -7,6 +7,10 @@ import { Mic2 } from 'lucide-react';
 const App: React.FC = () => {
   const [script, setScript] = useState('');
   
+  // Lifted state for Topic to share with Email function
+  // Persist Topic to localStorage
+  const [topic, setTopic] = useState(() => localStorage.getItem('podcastTopic') || '');
+
   // Initialize names from localStorage or default
   const [hostName, setHostName] = useState(() => localStorage.getItem('hostName') || 'Host');
   const [guestName, setGuestName] = useState(() => localStorage.getItem('guestName') || 'Guest');
@@ -19,6 +23,11 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('guestName', guestName);
   }, [guestName]);
+
+  // Persist Topic when changed
+  useEffect(() => {
+    localStorage.setItem('podcastTopic', topic);
+  }, [topic]);
 
   const handleScriptReady = (newScript: string) => {
     setScript(newScript);
@@ -53,11 +62,14 @@ const App: React.FC = () => {
             setHostName={setHostName}
             guestName={guestName}
             setGuestName={setGuestName}
+            topic={topic}
+            setTopic={setTopic}
           />
           <AudioSection 
             script={script} 
             hostName={hostName}
             guestName={guestName}
+            topic={topic}
           />
         </main>
 

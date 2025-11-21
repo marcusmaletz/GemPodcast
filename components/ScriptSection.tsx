@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2, Search, Sparkles, Globe, Users } from 'lucide-react';
 import { generateScript } from '../services/geminiService.ts';
 import { GeneratedScriptResponse } from '../types.ts';
@@ -10,6 +10,8 @@ interface ScriptSectionProps {
   setHostName: (name: string) => void;
   guestName: string;
   setGuestName: (name: string) => void;
+  topic: string;
+  setTopic: (topic: string) => void;
 }
 
 const ScriptSection: React.FC<ScriptSectionProps> = ({ 
@@ -17,13 +19,20 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
   hostName, 
   setHostName, 
   guestName, 
-  setGuestName 
+  setGuestName,
+  topic,
+  setTopic
 }) => {
-  const [topic, setTopic] = useState('');
   const [loading, setLoading] = useState(false);
-  const [useSearch, setUseSearch] = useState(false);
+  // Initialize search pref from localStorage
+  const [useSearch, setUseSearch] = useState(() => localStorage.getItem('useSearch') === 'true');
   const [currentScript, setCurrentScript] = useState('');
   const [sources, setSources] = useState<{ title: string; uri: string }[]>([]);
+
+  // Persist useSearch
+  useEffect(() => {
+    localStorage.setItem('useSearch', useSearch.toString());
+  }, [useSearch]);
 
   const handleGenerate = async () => {
     if (!topic.trim() || !hostName.trim() || !guestName.trim()) return;

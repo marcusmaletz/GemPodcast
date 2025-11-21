@@ -49,7 +49,9 @@ export const mixPodcastSequence = async (
   backgroundBuffer: AudioBuffer | null,
   introBuffer: AudioBuffer | null,
   outroBuffer: AudioBuffer | null,
-  musicVolume: number
+  musicVolume: number,
+  introVolume: number,
+  outroVolume: number
 ): Promise<AudioBuffer> => {
   // Target standard sample rate for MP3 (44.1kHz)
   const outputSampleRate = 44100; 
@@ -66,44 +68,41 @@ export const mixPodcastSequence = async (
   const length = Math.ceil(totalDuration * outputSampleRate);
   const offlineCtx = new OfflineAudioContext(numberOfChannels, length, outputSampleRate);
 
-  // Helper to create and connect source
-  const createSource = (buffer: AudioBuffer) => {
+  // Helper to create and connect source with gain
+  const createSource = (buffer: AudioBuffer, vol: number, startTime: number, stopTime?: number, loop: boolean = false) => {
     const source = offlineCtx.createBufferSource();
     source.buffer = buffer;
+    source.loop = loop;
+
+    const gainNode = offlineCtx.createGain();
+    gainNode.gain.value = vol;
+
+    source.connect(gainNode);
+    gainNode.connect(offlineCtx.destination);
+
+    source.start(startTime);
+    if (stopTime !== undefined) {
+      source.stop(stopTime);
+    }
     return source;
   };
 
   // 1. Intro
   if (introBuffer) {
-    const src = createSource(introBuffer);
-    src.connect(offlineCtx.destination);
-    src.start(0);
+    createSource(introBuffer, introVolume, 0);
   }
 
-  // 2. Voice
-  const voiceSrc = createSource(voiceBuffer);
-  voiceSrc.connect(offlineCtx.destination);
-  voiceSrc.start(introDur);
+  // 2. Voice (Standard volume 1.0)
+  createSource(voiceBuffer, 1.0, introDur);
 
   // 3. Background Music
   if (backgroundBuffer) {
-    const bgSrc = createSource(backgroundBuffer);
-    const gain = offlineCtx.createGain();
-    gain.gain.value = musicVolume;
-    
-    bgSrc.connect(gain);
-    gain.connect(offlineCtx.destination);
-    
-    bgSrc.loop = true;
-    bgSrc.start(introDur);
-    bgSrc.stop(introDur + voiceDur);
+    createSource(backgroundBuffer, musicVolume, introDur, introDur + voiceDur, true);
   }
 
   // 4. Outro
   if (outroBuffer) {
-    const outSrc = createSource(outroBuffer);
-    outSrc.connect(offlineCtx.destination);
-    outSrc.start(introDur + voiceDur);
+    createSource(outroBuffer, outroVolume, introDur + voiceDur);
   }
 
   // Render
@@ -226,6 +225,26 @@ export const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
   return new Blob(mp3Data, { type: 'audio/mp3' });
 };
 
+/**
+ * Helper to convert a Blob to a Base64 string.
+ */
+export const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        // Remove data URL prefix (e.g. "data:audio/mp3;base64,")
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      } else {
+        reject(new Error('Failed to convert blob to base64'));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
 
 // --- INDEXED DB PERSISTENCE HELPERS ---
 
@@ -289,4 +308,19 @@ export const getAudioFile = async (key: string): Promise<{ name: string, blob: B
     console.error("Error opening DB for reading:", err);
     return null;
   }
+};
+
+export const deleteAudioFile = async (key: string): Promise<void> => {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.delete(key);
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => {
+      console.error("IndexedDB Delete Error:", tx.error);
+      reject(tx.error);
+    };
+  });
 };
