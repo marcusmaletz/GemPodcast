@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc, Mail, X, Send, FileAudio, CheckCircle2 } from 'lucide-react';
+import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc, Mail, X, Send, FileAudio, CheckCircle2, Save } from 'lucide-react';
 import { VoiceName, MusicSlotIndex, StoredAudioFile } from '../types.ts';
 import { generatePodcastAudio, generateVoicePreview } from '../services/geminiService.ts';
 import { 
@@ -54,6 +54,9 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
   const [previewLoading, setPreviewLoading] = useState<string | null>(null); 
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   
+  // Save State
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+
   // Email Modal State
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailTo, setEmailTo] = useState('');
@@ -101,7 +104,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     loadData();
   }, []);
 
-  // --- Persistence: Save Metadata ---
+  // --- Persistence: Auto-save Metadata ---
   useEffect(() => {
     localStorage.setItem('selectedMusicIndex', selectedMusicIndex.toString());
   }, [selectedMusicIndex]);
@@ -136,6 +139,23 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
 
 
   // --- Handlers ---
+
+  const handleManualSave = () => {
+    try {
+      localStorage.setItem('hostVoice', hostVoice);
+      localStorage.setItem('guestVoice', guestVoice);
+      localStorage.setItem('selectedMusicIndex', selectedMusicIndex.toString());
+      localStorage.setItem('musicVolume', musicVolume.toString());
+      localStorage.setItem('introVolume', introVolume.toString());
+      localStorage.setItem('outroVolume', outroVolume.toString());
+      
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error("Save failed", e);
+      alert("Could not save settings.");
+    }
+  };
 
   const stopPreview = () => {
     if (previewAudioRef.current) {
@@ -439,14 +459,33 @@ Gemini Podcast Studio`;
 
   return (
     <div className={`bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg transition-opacity duration-500 ${!script ? 'opacity-50 pointer-events-none blur-[1px]' : 'opacity-100'}`}>
-      <div className="p-6 border-b border-slate-700 bg-slate-900/50">
-        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-          <Volume2 className="w-5 h-5 text-purple-400" />
-          Step 2: Create Audio
-        </h2>
-        <p className="text-slate-400 text-sm mt-1">
-          Assign voices, intro/outro, and background atmosphere.
-        </p>
+      <div className="p-6 border-b border-slate-700 bg-slate-900/50 flex items-start justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+            <Volume2 className="w-5 h-5 text-purple-400" />
+            Step 2: Create Audio
+          </h2>
+          <p className="text-slate-400 text-sm mt-1">
+            Assign voices, intro/outro, and background atmosphere.
+          </p>
+        </div>
+        <button
+          onClick={handleManualSave}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-600 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors text-xs font-medium"
+          title="Save current settings (voices, volumes, selection)"
+        >
+          {saveStatus === 'saved' ? (
+            <>
+              <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+              <span className="text-green-400">Saved</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-3.5 h-3.5" />
+              Save Settings
+            </>
+          )}
+        </button>
       </div>
 
       <div className="p-6 space-y-8">
