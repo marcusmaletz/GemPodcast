@@ -18,26 +18,31 @@ export const generateScript = async (
   topic: string,
   hostName: string,
   guestName: string,
-  useSearch: boolean = false
+  useSearch: boolean = false,
+  customSystemInstruction?: string
 ): Promise<GeneratedScriptResponse> => {
   try {
     const modelId = useSearch ? "gemini-2.5-flash" : "gemini-2.5-flash";
     
-    const prompt = `
-      You are a professional podcast producer. Write a short, engaging podcast script between two people: "${hostName}" and "${guestName}".
-      The topic is: "${topic}".
-      
-      Format constraints:
-      1. The script must be a dialogue.
-      2. Use "${hostName}:" and "${guestName}:" as prefixes for each line.
-      3. Keep it between 150-300 words total.
-      4. Make it sound natural, conversational, and enthusiastic.
-      5. Do not include sound effects or stage directions like [laughs].
-      6. Start immediately with the dialogue.
-    `;
+    // Default instruction if none provided
+    const defaultSystemInstruction = `You are a professional podcast producer.
+Your task is to write a short, engaging podcast script based on the provided topic and speaker names.
+
+Format constraints:
+1. The script must be a dialogue.
+2. Use the exact speaker names provided as prefixes for each line (e.g. "${hostName}:" and "${guestName}:").
+3. Keep it between 150-300 words total.
+4. Make it sound natural, conversational, and enthusiastic.
+5. Do not include sound effects or stage directions like [laughs].
+6. Start immediately with the dialogue.`;
+
+    const systemInstruction = customSystemInstruction || defaultSystemInstruction;
+
+    const userPrompt = `Topic: "${topic}"\nSpeaker 1 (Host): "${hostName}"\nSpeaker 2 (Guest): "${guestName}"\n\nPlease generate the script now.`;
 
     const config: any = {
       temperature: 0.7,
+      systemInstruction: systemInstruction,
     };
 
     // Add tools if search is requested
@@ -47,7 +52,7 @@ export const generateScript = async (
 
     const response = await ai.models.generateContent({
       model: modelId,
-      contents: prompt,
+      contents: userPrompt,
       config: config
     });
 

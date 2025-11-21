@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Search, Sparkles, Globe, Users } from 'lucide-react';
+import { Loader2, Search, Sparkles, Globe, Users, Settings, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { generateScript } from '../services/geminiService.ts';
 import { GeneratedScriptResponse } from '../types.ts';
 
@@ -13,6 +13,17 @@ interface ScriptSectionProps {
   topic: string;
   setTopic: (topic: string) => void;
 }
+
+const DEFAULT_SYSTEM_INSTRUCTION = `You are a professional podcast producer.
+Your task is to write a short, engaging podcast script based on the provided topic and speaker names.
+
+Format constraints:
+1. The script must be a dialogue.
+2. Use the exact speaker names provided as prefixes for each line.
+3. Keep it between 150-300 words total.
+4. Make it sound natural, conversational, and enthusiastic.
+5. Do not include sound effects or stage directions like [laughs].
+6. Start immediately with the dialogue.`;
 
 const ScriptSection: React.FC<ScriptSectionProps> = ({ 
   onScriptReady, 
@@ -28,18 +39,33 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
   const [useSearch, setUseSearch] = useState(() => localStorage.getItem('useSearch') === 'true');
   const [currentScript, setCurrentScript] = useState('');
   const [sources, setSources] = useState<{ title: string; uri: string }[]>([]);
+  
+  // Advanced Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [systemInstruction, setSystemInstruction] = useState(() => localStorage.getItem('systemInstruction') || DEFAULT_SYSTEM_INSTRUCTION);
 
   // Persist useSearch
   useEffect(() => {
     localStorage.setItem('useSearch', useSearch.toString());
   }, [useSearch]);
 
+  // Persist systemInstruction
+  useEffect(() => {
+    localStorage.setItem('systemInstruction', systemInstruction);
+  }, [systemInstruction]);
+
   const handleGenerate = async () => {
     if (!topic.trim() || !hostName.trim() || !guestName.trim()) return;
     setLoading(true);
     setSources([]);
     try {
-      const result: GeneratedScriptResponse = await generateScript(topic, hostName, guestName, useSearch);
+      const result: GeneratedScriptResponse = await generateScript(
+        topic, 
+        hostName, 
+        guestName, 
+        useSearch,
+        systemInstruction
+      );
       setCurrentScript(result.script);
       if (result.searchSources) {
         setSources(result.searchSources);
@@ -56,6 +82,10 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
     const newVal = e.target.value;
     setCurrentScript(newVal);
     onScriptReady(newVal);
+  };
+
+  const handleResetInstruction = () => {
+    setSystemInstruction(DEFAULT_SYSTEM_INSTRUCTION);
   };
 
   return (
@@ -116,24 +146,62 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center cursor-pointer gap-3 text-slate-300 hover:text-white transition-colors">
-              <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useSearch ? 'bg-purple-600 border-purple-600' : 'border-slate-600'}`}>
-                {useSearch && <Globe className="w-3 h-3 text-white" />}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center cursor-pointer gap-3 text-slate-300 hover:text-white transition-colors">
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useSearch ? 'bg-purple-600 border-purple-600' : 'border-slate-600'}`}>
+                  {useSearch && <Globe className="w-3 h-3 text-white" />}
+                </div>
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={useSearch} 
+                  onChange={(e) => setUseSearch(e.target.checked)} 
+                />
+                <span className="text-sm font-medium">Use Google Search Grounding (Real-time info)</span>
+              </label>
+
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
+              >
+                <Settings className="w-3 h-3" />
+                {showSettings ? 'Hide Advanced' : 'Advanced Settings'}
+                {showSettings ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            </div>
+
+            {/* Collapsible Advanced Settings */}
+            {showSettings && (
+              <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    System Instruction (Prompt Engineering)
+                  </label>
+                  <button 
+                    onClick={handleResetInstruction}
+                    className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset to Default
+                  </button>
+                </div>
+                <textarea
+                  value={systemInstruction}
+                  onChange={(e) => setSystemInstruction(e.target.value)}
+                  rows={6}
+                  className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-xs text-slate-300 font-mono focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                  placeholder="Enter instructions for the model..."
+                />
+                <p className="text-[10px] text-slate-500 mt-2">
+                  Tip: You can adjust the personality, tone, or formatting rules here. The host/guest names and topic will be appended automatically.
+                </p>
               </div>
-              <input 
-                type="checkbox" 
-                className="hidden" 
-                checked={useSearch} 
-                onChange={(e) => setUseSearch(e.target.checked)} 
-              />
-              <span className="text-sm font-medium">Use Google Search Grounding (Real-time info)</span>
-            </label>
+            )}
 
             <button
               onClick={handleGenerate}
               disabled={loading || !topic.trim() || !hostName.trim() || !guestName.trim()}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium text-white transition-all transform active:scale-95
+              className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium text-white transition-all transform active:scale-[0.99]
                 ${loading || !topic.trim() 
                   ? 'bg-slate-700 text-slate-500 cursor-not-allowed' 
                   : 'bg-purple-600 hover:bg-purple-500 shadow-lg shadow-purple-900/20'
@@ -142,10 +210,11 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Writing...
+                  Writing Script...
                 </>
               ) : (
                 <>
+                  <Sparkles className="w-4 h-4" />
                   Generate Script
                 </>
               )}
