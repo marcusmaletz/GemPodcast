@@ -29,11 +29,6 @@ export interface GeneratedScriptResponse {
   searchSources?: { title: string; uri: string }[];
 }
 
-export interface SpeakerConfig {
-  name: string;
-  voice: VoiceName;
-}
-
 export type BackgroundMusicPreset = 'none' | 'chill' | 'news';
 
 // ----------------------------------------------------------------------
@@ -255,7 +250,6 @@ const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
 // SERVICE
 // ----------------------------------------------------------------------
 
-// Safe API Key Access for Browser
 const getApiKey = () => {
   try {
     // @ts-ignore
