@@ -9,6 +9,16 @@
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
     <!-- Babel for in-browser compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Buffer Polyfill (Required for Google GenAI SDK in browser) -->
+    <script src="https://cdn.jsdelivr.net/npm/buffer@6.0.3/index.min.js"></script>
+    <script>
+      window.Buffer = window.buffer.Buffer;
+      // Process Polyfill
+      if (typeof process === 'undefined') {
+        window.process = { env: { API_KEY: '' } };
+      }
+    </script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       body {
@@ -21,30 +31,72 @@
       ::-webkit-scrollbar-track { background: #1e293b; }
       ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      
+      /* Error overlay styles */
+      #error-console {
+        display: none;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #7f1d1d;
+        color: #fecaca;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 12px;
+        max-height: 200px;
+        overflow: auto;
+        z-index: 9999;
+        border-top: 1px solid #991b1b;
+      }
     </style>
-    <!-- Import Map for module resolution on public web -->
+    <!-- Import Map with strict dependency linking -->
     <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0",
+    "react": "https://esm.sh/react@18.2.0?dev",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev&deps=react@18.2.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0?dev&deps=react@18.2.0",
     "@google/genai": "https://esm.sh/@google/genai@0.1.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
   }
 }
 </script>
     <script>
-      // Polyfill process for browser environment
-      if (typeof process === 'undefined') {
-        window.process = { env: { API_KEY: '' } };
-      }
+      // Global Error Handler to catch initialization issues
+      window.onerror = function(msg, url, line, col, error) {
+        const consoleEl = document.getElementById('error-console');
+        if(consoleEl) {
+          consoleEl.style.display = 'block';
+          consoleEl.innerHTML += `<div><strong>Error:</strong> ${msg} <br/><span style="opacity:0.7">${url}:${line}</span></div>`;
+        }
+        console.error(error);
+        return false;
+      };
+      
+      window.onunhandledrejection = function(event) {
+         const consoleEl = document.getElementById('error-console');
+         if(consoleEl) {
+            consoleEl.style.display = 'block';
+            consoleEl.innerHTML += `<div><strong>Promise Error:</strong> ${event.reason}</div>`;
+         }
+      };
     </script>
   </head>
   <body>
-    <div id="root"></div>
-    <!-- Load the single consolidated entry file -->
+    <div id="root">
+       <!-- Loading state before React mounts -->
+       <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #94a3b8;">
+         <svg class="animate-spin h-8 w-8 text-purple-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+         </svg>
+         <p>Loading Application...</p>
+       </div>
+    </div>
+    <div id="error-console"></div>
+    <!-- Load the application logic -->
     <script type="text/babel" data-type="module" data-presets="react,typescript" src="./index.tsx"></script>
   </body>
 </html>
