@@ -23,4 +23,10 @@ export interface SpeakerConfig {
   voice: VoiceName;
 }
 
-export type BackgroundMusicPreset = 'none' | 'chill' | 'news';
+// We use indices 0, 1, 2 for Music A, B, C. -1 means None.
+export type MusicSlotIndex = -1 | 0 | 1 | 2;
+
+export interface StoredAudioFile {
+  name: string;
+  blob: Blob;
+}

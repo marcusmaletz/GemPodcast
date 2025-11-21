@@ -1,19 +1,25 @@
+
 import React, { useState } from 'react';
 import { Loader2, Search, Sparkles, Globe, Users } from 'lucide-react';
 import { generateScript } from '../services/geminiService.ts';
 import { GeneratedScriptResponse } from '../types.ts';
 
 interface ScriptSectionProps {
-  onScriptReady: (script: string, hostName: string, guestName: string) => void;
+  onScriptReady: (script: string) => void;
+  hostName: string;
+  setHostName: (name: string) => void;
+  guestName: string;
+  setGuestName: (name: string) => void;
 }
 
-const ScriptSection: React.FC<ScriptSectionProps> = ({ onScriptReady }) => {
+const ScriptSection: React.FC<ScriptSectionProps> = ({ 
+  onScriptReady, 
+  hostName, 
+  setHostName, 
+  guestName, 
+  setGuestName 
+}) => {
   const [topic, setTopic] = useState('');
-  
-  // Speaker Names
-  const [hostName, setHostName] = useState('Host');
-  const [guestName, setGuestName] = useState('Guest');
-
   const [loading, setLoading] = useState(false);
   const [useSearch, setUseSearch] = useState(false);
   const [currentScript, setCurrentScript] = useState('');
@@ -29,7 +35,7 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({ onScriptReady }) => {
       if (result.searchSources) {
         setSources(result.searchSources);
       }
-      onScriptReady(result.script, hostName, guestName);
+      onScriptReady(result.script);
     } catch (error) {
       alert("Failed to generate script. Please try again.");
     } finally {
@@ -40,8 +46,7 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({ onScriptReady }) => {
   const handleScriptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newVal = e.target.value;
     setCurrentScript(newVal);
-    // Note: We keep the originally generated names for consistency unless user re-generates
-    onScriptReady(newVal, hostName, guestName);
+    onScriptReady(newVal);
   };
 
   return (

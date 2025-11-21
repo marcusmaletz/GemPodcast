@@ -1,8 +1,17 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square } from 'lucide-react';
-import { VoiceName, BackgroundMusicPreset } from '../types.ts';
+import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc } from 'lucide-react';
+import { VoiceName, MusicSlotIndex, StoredAudioFile } from '../types.ts';
 import { generatePodcastAudio, generateVoicePreview } from '../services/geminiService.ts';
-import { decodeBase64Audio, audioBufferToWav, audioBufferToMp3, mixAudioBuffers, generateProceduralTrack } from '../utils/audioUtils.ts';
+import { 
+  decodeBase64Audio, 
+  decodeAudioBlob,
+  audioBufferToWav, 
+  audioBufferToMp3, 
+  mixPodcastSequence,
+  storeAudioFile,
+  getAudioFile
+} from '../utils/audioUtils.ts';
 
 interface AudioSectionProps {
   script: string;
@@ -14,10 +23,15 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
   const [hostVoice, setHostVoice] = useState<VoiceName>(VoiceName.Kore);
   const [guestVoice, setGuestVoice] = useState<VoiceName>(VoiceName.Puck);
   
-  // Music State
-  const [musicPreset, setMusicPreset] = useState<BackgroundMusicPreset>('none');
-  const [customMusicFile, setCustomMusicFile] = useState<File | null>(null);
-  const [musicVolume, setMusicVolume] = useState<number>(0.15);
+  // Files State
+  const [introFile, setIntroFile] = useState<StoredAudioFile | null>(null);
+  const [outroFile, setOutroFile] = useState<StoredAudioFile | null>(null);
+  // Fixed slots for Music A, B, C
+  const [musicSlots, setMusicSlots] = useState<(StoredAudioFile | null)[]>([null, null, null]);
+  
+  // Selection State
+  const [selectedMusicIndex, setSelectedMusicIndex] = useState<MusicSlotIndex>(-1);
+  const [musicVolume, setMusicVolume] = useState<number>(0.10); // Default 10%
   
   // Generation State
   const [loading, setLoading] = useState(false);
@@ -25,29 +39,60 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
   const [error, setError] = useState<string | null>(null);
   
   // Preview State
-  const [previewLoading, setPreviewLoading] = useState<string | null>(null); // 'host' | 'guest' | 'music-chill' etc
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null); 
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Clean up main audio URL on unmount
+  // --- Initialization: Load from DB ---
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const intro = await getAudioFile('intro');
+        if (intro) setIntroFile(intro);
+
+        const outro = await getAudioFile('outro');
+        if (outro) setOutroFile(outro);
+
+        const slotA = await getAudioFile('music_0');
+        const slotB = await getAudioFile('music_1');
+        const slotC = await getAudioFile('music_2');
+        
+        setMusicSlots([slotA, slotB, slotC]);
+
+        // Restore selection
+        const savedIndex = localStorage.getItem('selectedMusicIndex');
+        if (savedIndex !== null) setSelectedMusicIndex(parseInt(savedIndex) as MusicSlotIndex);
+
+        const savedVol = localStorage.getItem('musicVolume');
+        if (savedVol !== null) setMusicVolume(parseFloat(savedVol));
+      } catch (e) {
+        console.error("Failed to load stored audio files", e);
+      }
+    };
+    loadData();
+  }, []);
+
+  // --- Persistence: Save Metadata ---
+  useEffect(() => {
+    localStorage.setItem('selectedMusicIndex', selectedMusicIndex.toString());
+  }, [selectedMusicIndex]);
+
+  useEffect(() => {
+    localStorage.setItem('musicVolume', musicVolume.toString());
+  }, [musicVolume]);
+
+  // --- Clean up ---
   useEffect(() => {
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
+      stopPreview();
     };
   }, [audioUrl]);
 
-  // Stop preview when component unmounts
-  useEffect(() => {
-    return () => {
-      if (previewAudioRef.current) {
-        previewAudioRef.current.pause();
-        previewAudioRef.current = null;
-      }
-    };
-  }, []);
+
+  // --- Handlers ---
 
   const stopPreview = () => {
     if (previewAudioRef.current) {
@@ -70,6 +115,41 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     setPlayingPreview(id);
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'intro' | 'outro' | 'music', index?: number) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+
+    try {
+      if (type === 'intro') {
+        await storeAudioFile('intro', file);
+        setIntroFile({ name: file.name, blob: file });
+      } else if (type === 'outro') {
+        await storeAudioFile('outro', file);
+        setOutroFile({ name: file.name, blob: file });
+      } else if (type === 'music' && typeof index === 'number') {
+        await storeAudioFile(`music_${index}`, file);
+        const newSlots = [...musicSlots];
+        newSlots[index] = { name: file.name, blob: file };
+        setMusicSlots(newSlots);
+        setSelectedMusicIndex(index as MusicSlotIndex); // Auto select uploaded
+      }
+    } catch (err) {
+      console.error("Failed to save file", err);
+      alert("Failed to save file to local storage.");
+    }
+    // Reset input
+    e.target.value = '';
+  };
+
+  const handlePreviewFile = (file: StoredAudioFile | null, id: string) => {
+    if (!file) return;
+    if (playingPreview === id) {
+      stopPreview();
+    } else {
+      playPreviewAudio(file.blob, id);
+    }
+  };
+
   const handleVoicePreview = async (voice: VoiceName, id: 'host' | 'guest') => {
     if (playingPreview === id) {
       stopPreview();
@@ -82,8 +162,6 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
       const text = `Hallo, ich bin ${voice}. Ich werde heute die Stimme von ${name} sein.`;
 
       const base64 = await generateVoicePreview(voice, text);
-      
-      // Convert base64 to playable blob
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const buffer = await decodeBase64Audio(base64, ctx);
       const blob = audioBufferToWav(buffer);
@@ -98,84 +176,52 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     }
   };
 
-  const handleMusicPreview = async (preset: BackgroundMusicPreset | 'custom') => {
-    const id = `music-${preset}`;
-    if (playingPreview === id) {
-      stopPreview();
-      return;
-    }
-
-    setPreviewLoading(id);
-
-    try {
-      let blob: Blob | null = null;
-
-      if (preset === 'custom') {
-        if (!customMusicFile) return;
-        blob = customMusicFile;
-      } else if (preset !== 'none') {
-        // Generate 5 seconds of procedural music
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        // Generate 5 seconds
-        const buffer = generateProceduralTrack(preset as any, 5, ctx);
-        blob = audioBufferToWav(buffer);
-        await ctx.close();
-      }
-
-      if (blob) {
-        playPreviewAudio(blob, id);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setPreviewLoading(null);
-    }
-  };
-
   const handleGenerateAudio = async () => {
     if (!script.trim()) return;
-    stopPreview(); // Stop any previews
+    stopPreview();
     setLoading(true);
     setError(null);
     setAudioUrl(null);
 
     try {
-      // 1. Get TTS Audio (Base64 PCM)
+      // 1. Get Voice Audio
       const base64Data = await generatePodcastAudio(script, hostName, guestName, hostVoice, guestVoice);
-      
-      // 2. Prepare AudioContext
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // 3. Decode TTS to AudioBuffer
-      const ttsBufferRaw = await decodeBase64Audio(base64Data, audioContext);
-      
-      // 4. Prepare Background Music Buffer
-      let musicBuffer: AudioBuffer | null = null;
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const voiceBuffer = await decodeBase64Audio(base64Data, ctx);
 
-      if (musicPreset !== 'none') {
-        if (musicPreset === 'chill' || musicPreset === 'news') {
-           // Generate procedural track matching the TTS buffer length
-           const duration = ttsBufferRaw.duration;
-           // Use offline context to allow fast generation without blocking main thread heavily
-           const tempCtx = new OfflineAudioContext(2, Math.ceil(duration * 24000), 24000);
-           musicBuffer = generateProceduralTrack(musicPreset, duration, tempCtx as unknown as AudioContext);
-        } 
-      } else if (customMusicFile) {
-        const fileBuffer = await customMusicFile.arrayBuffer();
-        const offlineCtx = new OfflineAudioContext(2, 1, 24000); 
-        musicBuffer = await offlineCtx.decodeAudioData(fileBuffer);
+      // 2. Prepare BG Music
+      let musicBuffer: AudioBuffer | null = null;
+      if (selectedMusicIndex !== -1 && musicSlots[selectedMusicIndex]) {
+        musicBuffer = await decodeAudioBlob(musicSlots[selectedMusicIndex]!.blob, ctx);
       }
 
-      // 5. Mix
-      const mixedBuffer = mixAudioBuffers(ttsBufferRaw, musicBuffer, musicVolume, audioContext);
-      
-      // 6. Convert to MP3 (320kbps)
+      // 3. Prepare Intro
+      let introBuffer: AudioBuffer | null = null;
+      if (introFile) {
+        introBuffer = await decodeAudioBlob(introFile.blob, ctx);
+      }
+
+      // 4. Prepare Outro
+      let outroBuffer: AudioBuffer | null = null;
+      if (outroFile) {
+        outroBuffer = await decodeAudioBlob(outroFile.blob, ctx);
+      }
+
+      // 5. Mix Sequence (Async now)
+      const mixedBuffer = await mixPodcastSequence(
+        voiceBuffer, 
+        musicBuffer, 
+        introBuffer, 
+        outroBuffer, 
+        musicVolume
+      );
+
+      // 6. Encode
       const mp3Blob = audioBufferToMp3(mixedBuffer);
-      
       const url = URL.createObjectURL(mp3Blob);
       setAudioUrl(url);
       
-      await audioContext.close();
+      await ctx.close();
 
     } catch (err) {
       console.error(err);
@@ -185,11 +231,64 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setCustomMusicFile(e.target.files[0]);
-      setMusicPreset('none'); // Deselect preset
-    }
+  // Helper Component for Music Cards
+  const MusicSlotCard = ({ index, label }: { index: number, label: string }) => {
+    const slot = musicSlots[index];
+    const isSelected = selectedMusicIndex === index;
+    const isPreviewing = playingPreview === `music_${index}`;
+
+    return (
+      <div className={`relative p-3 rounded-lg border transition-all group h-24 flex flex-col justify-between
+        ${isSelected ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500/50' : 'bg-slate-900 border-slate-700 hover:border-slate-500'}
+      `}>
+        {!slot ? (
+          <>
+             <div className="text-sm font-medium text-slate-400 mb-1">{label}</div>
+             <label className="flex items-center gap-2 text-xs text-purple-400 cursor-pointer hover:text-purple-300 mt-auto">
+               <Upload className="w-3 h-3" /> Upload MP3
+               <input 
+                 type="file" 
+                 accept="audio/*" 
+                 className="hidden" 
+                 onChange={(e) => handleFileUpload(e, 'music', index)} 
+               />
+             </label>
+          </>
+        ) : (
+          <>
+            <div 
+              onClick={() => setSelectedMusicIndex(index as MusicSlotIndex)}
+              className="absolute inset-0 cursor-pointer"
+            />
+            <div className="flex justify-between items-start relative pointer-events-none">
+               <div>
+                 <div className={`text-sm font-medium truncate pr-6 ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                   {label}
+                 </div>
+                 <div className="text-[10px] text-slate-500 truncate max-w-[100px]" title={slot.name}>{slot.name}</div>
+               </div>
+            </div>
+            
+            <div className="flex items-center justify-between mt-auto relative z-10">
+                <button
+                  onClick={() => handlePreviewFile(slot, `music_${index}`)}
+                  className="w-6 h-6 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600 hover:text-white text-slate-300 transition-colors"
+                >
+                   {isPreviewing ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current ml-0.5" />}
+                </button>
+                
+                <label className="p-1.5 text-slate-500 hover:text-purple-400 cursor-pointer">
+                  <Trash2 className="w-3 h-3 hover:text-red-400" onClick={(e) => {
+                    e.preventDefault();
+                    // TODO: Add delete function if needed, for now just re-upload is fine
+                  }}/>
+                  <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFileUpload(e, 'music', index)} />
+                </label>
+            </div>
+          </>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -200,7 +299,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
           Step 2: Create Audio
         </h2>
         <p className="text-slate-400 text-sm mt-1">
-          Assign voices and add background atmosphere.
+          Assign voices, intro/outro, and background atmosphere.
         </p>
       </div>
 
@@ -212,7 +311,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">{hostName} (Voice)</label>
+                    <label className="block text-xs font-medium text-slate-500 mb-1.5">{hostName}</label>
                     <div className="flex gap-2">
                         <div className="relative flex-1">
                             <select
@@ -230,18 +329,12 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
                             disabled={previewLoading !== null && previewLoading !== 'host'}
                             className="px-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors flex items-center justify-center min-w-[48px]"
                         >
-                            {previewLoading === 'host' ? (
-                                <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
-                            ) : playingPreview === 'host' ? (
-                                <Square className="w-4 h-4 fill-current" />
-                            ) : (
-                                <Play className="w-4 h-4 fill-current" />
-                            )}
+                            {previewLoading === 'host' ? <Loader2 className="w-4 h-4 animate-spin" /> : playingPreview === 'host' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
                         </button>
                     </div>
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">{guestName} (Voice)</label>
+                    <label className="block text-xs font-medium text-slate-500 mb-1.5">{guestName}</label>
                     <div className="flex gap-2">
                         <div className="relative flex-1">
                             <select
@@ -259,13 +352,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
                             disabled={previewLoading !== null && previewLoading !== 'guest'}
                             className="px-3 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors flex items-center justify-center min-w-[48px]"
                         >
-                             {previewLoading === 'guest' ? (
-                                <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
-                            ) : playingPreview === 'guest' ? (
-                                <Square className="w-4 h-4 fill-current" />
-                            ) : (
-                                <Play className="w-4 h-4 fill-current" />
-                            )}
+                             {previewLoading === 'guest' ? <Loader2 className="w-4 h-4 animate-spin" /> : playingPreview === 'guest' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
                         </button>
                     </div>
                 </div>
@@ -274,13 +361,59 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
 
         <div className="h-px bg-slate-700/50" />
 
-        {/* Music Selection */}
+        {/* Intro / Outro */}
+        <div className="space-y-4">
+             <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Disc className="w-4 h-4" /> Intro & Outro
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {/* Intro */}
+               <div className={`bg-slate-900 rounded-lg p-4 border ${introFile ? 'border-purple-500/50' : 'border-slate-700'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                     <span className="text-sm font-medium text-white">Intro</span>
+                     {introFile ? (
+                        <button onClick={() => handlePreviewFile(introFile, 'intro')} className="text-purple-400 hover:text-white">
+                           {playingPreview === 'intro' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
+                        </button>
+                     ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <label className="flex-1 truncate text-xs text-slate-400 bg-slate-800 py-2 px-3 rounded cursor-pointer hover:bg-slate-700 transition-colors">
+                          {introFile ? introFile.name : "Upload MP3..."}
+                          <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFileUpload(e, 'intro')} />
+                      </label>
+                  </div>
+               </div>
+
+               {/* Outro */}
+               <div className={`bg-slate-900 rounded-lg p-4 border ${outroFile ? 'border-purple-500/50' : 'border-slate-700'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                     <span className="text-sm font-medium text-white">Outro</span>
+                     {outroFile ? (
+                        <button onClick={() => handlePreviewFile(outroFile, 'outro')} className="text-purple-400 hover:text-white">
+                           {playingPreview === 'outro' ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
+                        </button>
+                     ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <label className="flex-1 truncate text-xs text-slate-400 bg-slate-800 py-2 px-3 rounded cursor-pointer hover:bg-slate-700 transition-colors">
+                          {outroFile ? outroFile.name : "Upload MP3..."}
+                          <input type="file" accept="audio/*" className="hidden" onChange={(e) => handleFileUpload(e, 'outro')} />
+                      </label>
+                  </div>
+               </div>
+            </div>
+        </div>
+
+        <div className="h-px bg-slate-700/50" />
+
+        {/* Background Music */}
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <Music className="w-4 h-4" /> Background Music
                 </h3>
-                {(musicPreset !== 'none' || customMusicFile) && (
+                {selectedMusicIndex !== -1 && (
                      <div className="flex items-center gap-2">
                         <Volume2 className="w-4 h-4 text-slate-400" />
                         <input 
@@ -298,91 +431,18 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* None Option */}
                 <button 
-                    onClick={() => { setMusicPreset('none'); setCustomMusicFile(null); stopPreview(); }}
-                    className={`p-3 rounded-lg border text-left transition-all ${musicPreset === 'none' && !customMusicFile ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                    onClick={() => { setSelectedMusicIndex(-1); stopPreview(); }}
+                    className={`p-3 rounded-lg border text-left transition-all h-24 flex flex-col justify-center ${selectedMusicIndex === -1 ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}
                 >
                     <div className="text-sm font-medium">None</div>
-                    <div className="text-xs opacity-70 mt-1">No background</div>
+                    <div className="text-xs opacity-70 mt-1">Voice only</div>
                 </button>
 
-                {/* Chill Preset */}
-                <div className={`relative p-1 rounded-lg border transition-all group ${musicPreset === 'chill' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}>
-                    <div 
-                        onClick={() => { setMusicPreset('chill'); setCustomMusicFile(null); }}
-                        className="p-2 cursor-pointer h-full"
-                    >
-                        <div className="text-sm font-medium">Relaxed</div>
-                        <div className="text-xs opacity-70 mt-1">Gentle Ambience</div>
-                    </div>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); handleMusicPreview('chill'); }}
-                        className="absolute top-2 right-2 w-6 h-6 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600 hover:text-white transition-colors"
-                    >
-                         {previewLoading === 'music-chill' ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : playingPreview === 'music-chill' ? (
-                            <Square className="w-3 h-3 fill-current" />
-                        ) : (
-                            <Play className="w-3 h-3 fill-current ml-0.5" />
-                        )}
-                    </button>
-                </div>
-                
-                {/* News Preset */}
-                <div className={`relative p-1 rounded-lg border transition-all group ${musicPreset === 'news' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}>
-                    <div 
-                        onClick={() => { setMusicPreset('news'); setCustomMusicFile(null); }}
-                        className="p-2 cursor-pointer h-full"
-                    >
-                        <div className="text-sm font-medium">News Room</div>
-                        <div className="text-xs opacity-70 mt-1">Subtle Pulse</div>
-                    </div>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); handleMusicPreview('news'); }}
-                        className="absolute top-2 right-2 w-6 h-6 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600 hover:text-white transition-colors"
-                    >
-                        {previewLoading === 'music-news' ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : playingPreview === 'music-news' ? (
-                            <Square className="w-3 h-3 fill-current" />
-                        ) : (
-                            <Play className="w-3 h-3 fill-current ml-0.5" />
-                        )}
-                    </button>
-                </div>
-
-                {/* Custom Upload */}
-                <div className={`relative p-1 rounded-lg border transition-all overflow-hidden group ${customMusicFile ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}>
-                    <input 
-                        type="file" 
-                        accept="audio/*" 
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    />
-                     <div className="p-2 h-full flex flex-col justify-center">
-                        <div className="text-sm font-medium flex items-center gap-2">
-                            <Upload className="w-3 h-3" />
-                            {customMusicFile ? 'Custom' : 'Upload'}
-                        </div>
-                        <div className="text-xs opacity-70 mt-1 truncate pr-6">
-                            {customMusicFile ? customMusicFile.name : 'Select Audio'}
-                        </div>
-                    </div>
-                    {customMusicFile && (
-                        <button
-                             onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleMusicPreview('custom'); }}
-                             className="absolute top-2 right-2 w-6 h-6 bg-slate-700 rounded-full flex items-center justify-center hover:bg-slate-600 hover:text-white transition-colors z-20"
-                        >
-                             {playingPreview === 'music-custom' ? (
-                                <Square className="w-3 h-3 fill-current" />
-                            ) : (
-                                <Play className="w-3 h-3 fill-current ml-0.5" />
-                            )}
-                        </button>
-                    )}
-                </div>
+                <MusicSlotCard index={0} label="Music A" />
+                <MusicSlotCard index={1} label="Music B" />
+                <MusicSlotCard index={2} label="Music C" />
             </div>
         </div>
 
@@ -401,7 +461,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
                 <span>
-                    {musicPreset !== 'none' || customMusicFile ? 'Mixing Audio...' : 'Synthesizing...'}
+                   Mixing Audio...
                 </span>
               </>
             ) : (
@@ -430,7 +490,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
                   <div>
                     <h3 className="text-white font-medium">Final Podcast</h3>
                     <p className="text-xs text-slate-500">
-                        {musicPreset !== 'none' || customMusicFile ? 'Voice + Music Mixed' : 'Voice Only'} • 320kbps MP3
+                        320kbps MP3 • {introFile && 'Intro + '}Dialog{selectedMusicIndex !== -1 && ' + BG Music'}{outroFile && ' + Outro'}
                     </p>
                   </div>
                 </div>

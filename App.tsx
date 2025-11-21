@@ -1,17 +1,27 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import ScriptSection from './components/ScriptSection.tsx';
 import AudioSection from './components/AudioSection.tsx';
 import { Mic2 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [script, setScript] = useState('');
-  const [hostName, setHostName] = useState('Host');
-  const [guestName, setGuestName] = useState('Guest');
+  
+  // Initialize names from localStorage or default
+  const [hostName, setHostName] = useState(() => localStorage.getItem('hostName') || 'Host');
+  const [guestName, setGuestName] = useState(() => localStorage.getItem('guestName') || 'Guest');
 
-  const handleScriptReady = (newScript: string, newHost: string, newGuest: string) => {
+  // Persist names when changed
+  useEffect(() => {
+    localStorage.setItem('hostName', hostName);
+  }, [hostName]);
+
+  useEffect(() => {
+    localStorage.setItem('guestName', guestName);
+  }, [guestName]);
+
+  const handleScriptReady = (newScript: string) => {
     setScript(newScript);
-    setHostName(newHost);
-    setGuestName(newGuest);
   };
 
   return (
@@ -37,7 +47,13 @@ const App: React.FC = () => {
         </header>
 
         <main className="space-y-8">
-          <ScriptSection onScriptReady={handleScriptReady} />
+          <ScriptSection 
+            onScriptReady={handleScriptReady} 
+            hostName={hostName}
+            setHostName={setHostName}
+            guestName={guestName}
+            setGuestName={setGuestName}
+          />
           <AudioSection 
             script={script} 
             hostName={hostName}
