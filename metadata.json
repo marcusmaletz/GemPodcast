@@ -1,5 +1,5 @@
 {
-  "name": "Gemini Podcast Studio",
+  "name": "ANY EVER Podcast Studio",
   "description": "A full-featured podcast generator that creates scripts from topics (using Google Search) and converts them into multi-speaker audio using Gemini's latest TTS models.",
   "requestFramePermissions": []
 }
