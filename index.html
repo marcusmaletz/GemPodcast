@@ -84,36 +84,33 @@
   }
 }
 </script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
     
     <script>
-        // Polyfills for Browser Compatibility with GenAI SDK
-        if (typeof process === 'undefined') {
-            window.process = { env: { API_KEY: '' } }; 
-        }
-        if (typeof Buffer === 'undefined') {
-            window.Buffer = {
-                from: (str, encoding) => {
-                    if (encoding === 'base64') {
-                        const bin = atob(str);
-                        const arr = new Uint8Array(bin.length);
-                        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                        return arr;
-                    }
-                    return new TextEncoder().encode(str);
+        // Polyfills
+        window.process = { env: { API_KEY: '' } };
+        window.Buffer = {
+            from: (str, encoding) => {
+                if (encoding === 'base64') {
+                    const bin = atob(str);
+                    const arr = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                    return arr;
                 }
-            };
-        }
-        // Error Trap
+                return new TextEncoder().encode(str);
+            }
+        };
+        
+        // Error Handler
         window.onerror = function(msg, url, line, col, error) {
-           if(msg.includes('ResizeObserver')) return;
-           console.error("Global Error:", msg, line);
+           console.error("App Error:", msg, line);
+           // document.body.innerHTML += `<div style="color:red;padding:20px;">ERROR: ${msg}</div>`;
         };
     </script>
 
-    <!-- Main Application Entry - Loaded as Module for Babel -->
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
+    <!-- Main Application Entry - Monolithic File -->
+    <script type="text/babel" data-type="module" src="index.tsx"></script>
   </body>
 </html>

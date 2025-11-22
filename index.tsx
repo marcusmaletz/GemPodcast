@@ -2,16 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { 
   Sparkles, Users, Globe, Settings, ChevronUp, ChevronDown, RotateCcw, 
-  Rss, Plus, Trash2, ExternalLink, Mic, Play, Square, Volume2, Disc, 
-  Music, Upload, Save, CheckCircle2, Mail, Download, FileAudio, X, Send, Loader2 
+  Rss, Plus, Trash2, ExternalLink, Mic, Play, Volume2, Disc, 
+  Music, Upload, Save, CheckCircle2, Mail, Download, FileAudio, X, Send, Loader2, Square 
 } from 'lucide-react';
 import { GoogleGenAI, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
 // ==========================================
-// 1. TYPES & CONFIG
+// 1. CONFIG & TYPES
 // ==========================================
 
 const N8N_WEBHOOK_URL = 'https://anymal.app.n8n.cloud/webhook/send_mail';
+const API_KEY = process.env.API_KEY; 
 
 enum VoiceName {
   Puck = 'Puck',
@@ -41,11 +42,10 @@ interface StoredAudioFile {
 
 type MusicSlotIndex = -1 | 0 | 1 | 2;
 
-// ==========================================
-// 2. UTILS (Audio, RSS, Storage)
-// ==========================================
 
-// --- Audio Encoding/Decoding ---
+// ==========================================
+// 2. AUDIO UTILS
+// ==========================================
 
 const decodeBase64Audio = async (base64String: string, ctx: AudioContext): Promise<AudioBuffer> => {
   const binaryString = atob(base64String);
@@ -117,7 +117,7 @@ const mixPodcastSequence = async (
 const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
   // @ts-ignore
   const lamejs = window.lamejs;
-  if (!lamejs) throw new Error("Lamejs library not found.");
+  if (!lamejs) throw new Error("Lamejs library not found. Check internet connection.");
   const channels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const kbps = 320; 
@@ -191,7 +191,8 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-// --- IndexedDB Persistence ---
+// --- STORAGE UTILS (IndexedDB) ---
+
 const DB_NAME = 'GeminiPodcastStudioDB';
 const STORE_NAME = 'audioFiles';
 const DB_VERSION = 1;
@@ -239,7 +240,10 @@ const deleteAudioFile = async (key: string): Promise<void> => {
   });
 };
 
-// --- RSS Utils ---
+
+// ==========================================
+// 3. RSS UTILS
+// ==========================================
 
 const fetchFeedContent = async (url: string): Promise<string | null> => {
   const cleanUrl = url.trim();
@@ -250,11 +254,11 @@ const fetchFeedContent = async (url: string): Promise<string | null> => {
       const data = await response.json();
       if (data.contents) return data.contents;
     }
-  } catch (e) { console.warn(`AllOrigins proxy failed for ${cleanUrl}`, e); }
+  } catch (e) { console.warn(`AllOrigins proxy failed`, e); }
   try {
     const response = await fetch(`https://corsproxy.io/?${encodedUrl}`);
     if (response.ok) return await response.text();
-  } catch (e) { console.warn(`CorsProxy failed for ${cleanUrl}`, e); }
+  } catch (e) { console.warn(`CorsProxy failed`, e); }
   return null;
 };
 
@@ -340,11 +344,11 @@ const fetchRssFeeds = async (urls: string[]): Promise<{ combinedContent: string,
   return { combinedContent, articles: allArticles };
 };
 
+
 // ==========================================
-// 3. SERVICES (Gemini)
+// 4. GEMINI SERVICE
 // ==========================================
 
-const API_KEY = process.env.API_KEY;
 const ai = new GoogleGenAI({ apiKey: API_KEY || '' });
 
 const generateScript = async (
@@ -457,8 +461,9 @@ const generatePodcastAudio = async (script: string, hostName: string, guestName:
   return parts[0].inlineData.data;
 };
 
+
 // ==========================================
-// 4. COMPONENTS
+// 5. COMPONENTS
 // ==========================================
 
 const ScriptSection: React.FC<{
@@ -833,8 +838,9 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
   );
 };
 
+
 // ==========================================
-// 5. APP LAYOUT
+// 6. APP MAIN
 // ==========================================
 
 const App: React.FC = () => {
@@ -878,8 +884,14 @@ const App: React.FC = () => {
   );
 };
 
+// ==========================================
+// 7. RENDER ROOT
+// ==========================================
+
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(<React.StrictMode><App /></React.StrictMode>);
+} else {
+  console.error("Root element not found");
 }
