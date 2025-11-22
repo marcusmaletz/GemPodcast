@@ -8,13 +8,13 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- LameJS for MP3 Encoding -->
+    <!-- LameJS for MP3 Encoding (Global Script) -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Babel Standalone with TS support -->
+    <!-- Babel Standalone for In-Browser Compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -76,7 +76,7 @@
       }
     </style>
 
-    <!-- Import Map for external libraries -->
+    <!-- Import Map for reliable external dependencies -->
     <script type="importmap">
 {
   "imports": {
@@ -99,12 +99,12 @@
             const div = document.getElementById('error-log');
             if(div) {
                 div.style.display = 'block';
-                div.innerText = `APP CRASH:\n${msg}\nFile: ${url}\nLine: ${line}\nCheck console for details.`;
+                div.innerText = `APP CRASH:\n${msg}\nLine: ${line}\nCheck console for details.`;
             }
             console.error("Global Error:", error);
         };
         
-        // POLYFILLS
+        // POLYFILLS for GenAI SDK
         window.process = { env: { API_KEY: '' } }; 
         window.Buffer = {
             from: (str, encoding) => {
@@ -119,8 +119,8 @@
         };
     </script>
 
-    <!-- MONOLITHIC APP CODE INLINED -->
-    <script type="text/babel" data-type="module" data-presets="react,typescript">
+    <!-- MAIN APPLICATION CODE -->
+    <script type="text/babel" data-type="module">
       import React, { useState, useEffect, useRef } from 'react';
       import ReactDOM from 'react-dom/client';
       import { 
@@ -135,42 +135,23 @@
       // ==========================================
 
       const N8N_WEBHOOK_URL = 'https://anymal.app.n8n.cloud/webhook/send_mail';
-      const API_KEY = process.env.API_KEY; 
+      const API_KEY = process.env.API_KEY || ''; 
 
-      enum VoiceName {
-        Puck = 'Puck',
-        Charon = 'Charon',
-        Kore = 'Kore',
-        Fenrir = 'Fenrir',
-        Zephyr = 'Zephyr',
-      }
-
-      interface RssArticle {
-        title: string;
-        description: string;
-        link: string;
-        source: string;
-      }
-
-      interface GeneratedScriptResponse {
-        title: string;
-        script: string;
-        searchSources?: { title: string; uri: string }[];
-      }
-
-      interface StoredAudioFile {
-        name: string;
-        blob: Blob;
-      }
-
-      type MusicSlotIndex = -1 | 0 | 1 | 2;
-
+      // ENUMS & INTERFACES
+      const VoiceName = {
+        Puck: 'Puck',
+        Charon: 'Charon',
+        Kore: 'Kore',
+        Fenrir: 'Fenrir',
+        Zephyr: 'Zephyr',
+      };
 
       // ==========================================
-      // 2. AUDIO UTILS
+      // 2. UTILS
       // ==========================================
 
-      const decodeBase64Audio = async (base64String: string, ctx: AudioContext): Promise<AudioBuffer> => {
+      // --- Audio Utils ---
+      const decodeBase64Audio = async (base64String, ctx) => {
         const binaryString = atob(base64String);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
@@ -191,20 +172,12 @@
         return buffer;
       };
 
-      const decodeAudioBlob = async (blob: Blob, ctx: AudioContext): Promise<AudioBuffer> => {
+      const decodeAudioBlob = async (blob, ctx) => {
         const arrayBuffer = await blob.arrayBuffer();
         return await ctx.decodeAudioData(arrayBuffer);
       };
 
-      const mixPodcastSequence = async (
-        voiceBuffer: AudioBuffer,
-        backgroundBuffer: AudioBuffer | null,
-        introBuffer: AudioBuffer | null,
-        outroBuffer: AudioBuffer | null,
-        musicVolume: number,
-        introVolume: number,
-        outroVolume: number
-      ): Promise<AudioBuffer> => {
+      const mixPodcastSequence = async (voiceBuffer, backgroundBuffer, introBuffer, outroBuffer, musicVolume, introVolume, outroVolume) => {
         const outputSampleRate = 44100; 
         const numberOfChannels = 2; 
         const introDur = introBuffer ? introBuffer.duration : 0;
@@ -215,7 +188,7 @@
         const length = Math.ceil(safeDuration * outputSampleRate);
         const offlineCtx = new OfflineAudioContext(numberOfChannels, length, outputSampleRate);
 
-        const createSource = (buffer: AudioBuffer, vol: number, startTime: number, stopTime?: number, loop: boolean = false) => {
+        const createSource = (buffer, vol, startTime, stopTime, loop = false) => {
           const safeVol = isFinite(vol) && vol >= 0 ? vol : 0;
           const source = offlineCtx.createBufferSource();
           source.buffer = buffer;
@@ -237,15 +210,14 @@
         return await offlineCtx.startRendering();
       };
 
-      const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
-        // @ts-ignore
+      const audioBufferToMp3 = (buffer) => {
         const lamejs = window.lamejs;
         if (!lamejs) throw new Error("Lamejs library not found. Check internet connection.");
         const channels = buffer.numberOfChannels;
         const sampleRate = buffer.sampleRate;
         const kbps = 320; 
         const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
-        const mp3Data: Int8Array[] = [];
+        const mp3Data = [];
         const rawLeft = buffer.getChannelData(0);
         const rawRight = channels > 1 ? buffer.getChannelData(1) : rawLeft;
         const length = rawLeft.length;
@@ -271,15 +243,15 @@
         return new Blob(mp3Data, { type: 'audio/mp3' });
       };
 
-      const audioBufferToWav = (buffer: AudioBuffer): Blob => {
+      const audioBufferToWav = (buffer) => {
         const numOfChan = buffer.numberOfChannels;
         const length = buffer.length * numOfChan * 2 + 44;
         const bufferArr = new ArrayBuffer(length);
         const view = new DataView(bufferArr);
         const channels = [];
         let i, sample, offset = 0, pos = 0;
-        const setUint16 = (data: number) => { view.setUint16(pos, data, true); pos += 2; };
-        const setUint32 = (data: number) => { view.setUint32(pos, data, true); pos += 4; };
+        const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
+        const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
 
         setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
         setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
@@ -300,7 +272,7 @@
         return new Blob([bufferArr], { type: "audio/wav" });
       };
 
-      const blobToBase64 = (blob: Blob): Promise<string> => {
+      const blobToBase64 = (blob) => {
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => {
@@ -314,23 +286,21 @@
         });
       };
 
-      // --- STORAGE UTILS (IndexedDB) ---
-
+      // --- DB Utils ---
       const DB_NAME = 'GeminiPodcastStudioDB';
       const STORE_NAME = 'audioFiles';
-      const DB_VERSION = 1;
-      const openDB = (): Promise<IDBDatabase> => {
+      const openDB = () => {
         return new Promise((resolve, reject) => {
-          const request = indexedDB.open(DB_NAME, DB_VERSION);
+          const request = indexedDB.open(DB_NAME, 1);
           request.onerror = () => reject(request.error);
           request.onsuccess = () => resolve(request.result);
-          request.onupgradeneeded = (event: any) => {
+          request.onupgradeneeded = (event) => {
             const db = event.target.result;
             if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
           };
         });
       };
-      const storeAudioFile = async (key: string, file: File): Promise<void> => {
+      const storeAudioFile = async (key, file) => {
         const db = await openDB();
         return new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -340,7 +310,7 @@
           tx.onerror = () => reject(tx.error);
         });
       };
-      const getAudioFile = async (key: string): Promise<{ name: string, blob: Blob } | null> => {
+      const getAudioFile = async (key) => {
         try {
           const db = await openDB();
           return new Promise((resolve, reject) => {
@@ -352,7 +322,7 @@
           });
         } catch (err) { return null; }
       };
-      const deleteAudioFile = async (key: string): Promise<void> => {
+      const deleteAudioFile = async (key) => {
         const db = await openDB();
         return new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -363,12 +333,8 @@
         });
       };
 
-
-      // ==========================================
-      // 3. RSS UTILS
-      // ==========================================
-
-      const fetchFeedContent = async (url: string): Promise<string | null> => {
+      // --- RSS Utils ---
+      const fetchFeedContent = async (url) => {
         const cleanUrl = url.trim();
         const encodedUrl = encodeURIComponent(cleanUrl);
         try {
@@ -377,7 +343,7 @@
             const data = await response.json();
             if (data.contents) return data.contents;
           }
-        } catch (e) { console.warn(`AllOrigins proxy failed`, e); }
+        } catch (e) { console.warn(`AllOrigins failed`, e); }
         try {
           const response = await fetch(`https://corsproxy.io/?${encodedUrl}`);
           if (response.ok) return await response.text();
@@ -385,28 +351,26 @@
         return null;
       };
 
-      const fetchRssFeeds = async (urls: string[]): Promise<{ combinedContent: string, articles: RssArticle[] }> => {
+      const fetchRssFeeds = async (urls) => {
         if (urls.length === 0) return { combinedContent: "", articles: [] };
         let combinedContent = "RSS FEED QUELLEMATERIAL (STRICT USE ONLY):\n";
-        const allArticles: RssArticle[] = [];
+        const allArticles = [];
         const validUrls = urls.filter(u => u.trim().length > 0);
 
         for (const url of validUrls) {
           try {
             const xmlString = await fetchFeedContent(url);
             if (!xmlString) {
-              combinedContent += `\n(Fehler beim Laden des Feeds: ${url})\n`;
+              combinedContent += `\n(Fehler beim Laden: ${url})\n`;
               continue;
             }
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-            if (xmlDoc.querySelector("parsererror")) {
-              combinedContent += `\n(Fehler beim Lesen des XML-Formats für: ${url})\n`;
-              continue;
-            }
-            let channelTitle = "Unbekannte Quelle";
+            if (xmlDoc.querySelector("parsererror")) continue;
+
+            let channelTitle = "Unbekannt";
             const titleNode = xmlDoc.querySelector("channel > title") || xmlDoc.querySelector("feed > title");
-            if (titleNode && titleNode.textContent) channelTitle = titleNode.textContent.trim();
+            if (titleNode) channelTitle = titleNode.textContent.trim();
 
             const items = Array.from(xmlDoc.querySelectorAll("item, entry")).slice(0, 5);
             combinedContent += `\n=== QUELLE: ${channelTitle} ===\n`;
@@ -427,8 +391,8 @@
                   for (let i = 0; i < atomLinks.length; i++) {
                       const href = atomLinks[i].getAttribute("href");
                       if (href) { link = href; break; }
-                      if (atomLinks[i].textContent && atomLinks[i].textContent?.startsWith('http')) {
-                          link = atomLinks[i].textContent?.trim() || "";
+                      if (atomLinks[i].textContent && atomLinks[i].textContent.startsWith('http')) {
+                          link = atomLinks[i].textContent.trim();
                           break;
                       }
                   }
@@ -442,125 +406,75 @@
                   const idText = idNode?.textContent?.trim();
                   if (idText && (idText.startsWith("http") || idText.startsWith("https"))) link = idText;
               }
-              if (!link) {
-                  const html = item.innerHTML;
-                  const urlMatch = html.match(/<link>(https?:\/\/[^<]+)<\/link>/i);
-                  if (urlMatch && urlMatch[1]) link = urlMatch[1];
-              }
 
-              const articleObj: RssArticle = {
-                title,
-                description: fullText.substring(0, 300), 
-                link: link || "Link nicht gefunden",
-                source: channelTitle
-              };
-              allArticles.push(articleObj);
+              allArticles.push({ title, description: fullText.substring(0, 300), link: link || "N/A", source: channelTitle });
               
               combinedContent += `\n- ARTIKEL: "${title}"\n  QUELLE: ${channelTitle}\n  LINK: ${link}\n`; 
-              if (fullText) {
-                 const analysisText = fullText.length > 2500 ? fullText.substring(0, 2500) + "..." : fullText;
-                 combinedContent += `  INHALT: ${analysisText}\n`;
-              }
+              if (fullText) combinedContent += `  INHALT: ${fullText.length > 2500 ? fullText.substring(0, 2500) + "..." : fullText}\n`;
             });
-          } catch (error) { console.error(`Failed to process RSS feed: ${url}`, error); }
+          } catch (e) { console.error(`RSS Error ${url}`, e); }
         }
         return { combinedContent, articles: allArticles };
       };
 
-
       // ==========================================
-      // 4. GEMINI SERVICE
+      // 3. GEMINI SERVICE
       // ==========================================
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-      const ai = new GoogleGenAI({ apiKey: API_KEY || '' });
+      const generateScript = async (topic, hostName, guestName, useSearch, rssContent, customInstruction) => {
+        const modelId = "gemini-2.5-flash";
+        const defaultInst = `Du bist ein professioneller Podcast-Produzent. Schreibe einen tiefgründigen Dialog auf DEUTSCH.`;
+        const systemInstruction = customInstruction || defaultInst;
 
-      const generateScript = async (
-        topic: string,
-        hostName: string,
-        guestName: string,
-        useSearch: boolean = false,
-        rssContent: string = "",
-        customSystemInstruction?: string
-      ): Promise<GeneratedScriptResponse> => {
-        try {
-          const modelId = "gemini-2.5-flash";
-          const defaultSystemInstruction = `Du bist ein professioneller, investigativer Podcast-Produzent.
-      Deine Aufgabe ist es, einen tiefgründigen, spannenden Podcast-Dialog basierend auf dem Thema und den bereitgestellten Quellen zu schreiben.
-      WICHTIGE REGELN FÜR DEN INHALT:
-      1. **SPRACHE**: Der gesamte Dialog muss zwingend auf DEUTSCH verfasst sein.
-      2. **KEIN OBERFLÄCHLICHER SMALLTALK**: Analysiere die AUSWIRKUNGEN und HINTERGRÜNDE.
-      3. **DISKUSSION**: Der Host und der Gast sollten leicht unterschiedliche Perspektiven haben oder kritische Nachfragen stellen.
-      4. **NATÜRLICHKEIT**: Es soll wie ein echtes Gespräch klingen, nicht wie vorgelesen.
-      Formatierung:
-      1. Das Skript muss ein Dialog sein.
-      2. Nutze exakt die vorgegebenen Sprechernamen als Präfix (z.B. "${hostName}:", "${guestName}:").
-      3. Länge: ca. 400-600 Wörter.
-      4. Starte sofort mit dem Dialog.`;
+        let userPrompt = `Thema: "${topic}"\nSprecher 1: "${hostName}"\nSprecher 2: "${guestName}"\n`;
 
-          const systemInstruction = customSystemInstruction || defaultSystemInstruction;
-          let userPrompt = `Thema: "${topic}"\nSprecher 1 (Host): "${hostName}"\nSprecher 2 (Gast): "${guestName}"\n`;
+        if (rssContent) {
+          userPrompt += `\nRSS-MODUS AKTIV. NUTZE NUR DIESE QUELLEN:\n${rssContent}\n`;
+          userPrompt += `REGELN:\n1. Deduplizieren.\n2. Relevanz prüfen (Top 3-4 Themen).\n3. ZITIERPFLICHT: Nenne Quellen verbal.\n`;
+        }
+        userPrompt += `\nGeneriere das Skript auf DEUTSCH.`;
 
-          if (rssContent) {
-            userPrompt += `\nACHTUNG: RSS-MODUS AKTIV. NUTZE NUR DIE FOLGENDEN QUELLEN:\n==================================================\n${rssContent}\n==================================================\n`;
-            userPrompt += `\nSCHRITT 1: REDAKTIONELLE PRÜFUNG & KURATIERUNG:\n1. **DEDUPLIZIERUNG**: Fasse gleiche Events zusammen.\n2. **RELEVANZ-FILTER**: Ignoriere Bugfixes und Werbung. Wähle nur Top 3-4 Themen.\n`;
-            userPrompt += `\nSCHRITT 2: SCHREIBEN:\n1. Nutze AUSSCHLIESSLICH die RSS-Inhalte. KEIN externes Wissen.\n2. ZITIERPFLICHT: Nenne die Quelle verbal (z.B. "Laut Heise Online...").\n`;
-          }
-          userPrompt += `\n\nGeneriere jetzt das Skript basierend auf deiner redaktionellen Auswahl. WICHTIG: Schreibe den Dialog komplett auf DEUTSCH.`;
+        const config = { temperature: 0.3, systemInstruction: systemInstruction };
+        if (useSearch) config.tools = [{ googleSearch: {} }];
 
-          const config: any = {
-            temperature: 0.3,
-            systemInstruction: systemInstruction,
-          };
-          if (useSearch) {
-            config.tools = [{ googleSearch: {} }];
-          }
-
-          const response = await ai.models.generateContent({
-            model: modelId,
-            contents: userPrompt,
-            config: config
+        const response = await ai.models.generateContent({ model: modelId, contents: userPrompt, config: config });
+        
+        const text = response.text || "";
+        let searchSources = [];
+        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+        if (chunks) {
+          chunks.forEach(chunk => {
+             if (chunk.web) searchSources.push({ title: chunk.web.title, uri: chunk.web.uri });
           });
-
-          const text = response.text || "";
-          let searchSources: { title: string; uri: string }[] = [];
-          const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-          if (chunks) {
-            chunks.forEach((chunk: any) => {
-              if (chunk.web) searchSources.push({ title: chunk.web.title, uri: chunk.web.uri });
-            });
-          }
-
-          const dateStr = new Date().toLocaleDateString('de-DE');
-          const shortTopic = topic.length > 30 ? topic.substring(0, 27) + "..." : topic;
-          return {
-            title: `AI-Podcast: ${shortTopic} - ${dateStr}`,
-            script: text,
-            searchSources
-          };
-        } catch (e) { console.error(e); throw e; }
+        }
+        
+        return {
+          title: `AI-Podcast: ${topic} - ${new Date().toLocaleDateString('de-DE')}`,
+          script: text,
+          searchSources
+        };
       };
 
-      const generateVoicePreview = async (voice: VoiceName, text: string): Promise<string> => {
+      const generateVoicePreview = async (voice, text) => {
         const response = await ai.models.generateContent({
           model: "gemini-2.5-flash-preview-tts",
           contents: [{ parts: [{ text: text }] }],
           config: {
             responseModalities: [Modality.AUDIO],
-            speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } }
-            }
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
           }
         });
         const parts = response.candidates?.[0]?.content?.parts;
-        if (!parts || !parts[0].inlineData) throw new Error("No audio content generated.");
+        if (!parts?.[0]?.inlineData?.data) throw new Error("No audio content.");
         return parts[0].inlineData.data;
       };
 
-      const generatePodcastAudio = async (script: string, hostName: string, guestName: string, hostVoice: VoiceName, guestVoice: VoiceName): Promise<string> => {
-        const cleanedScript = script.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+      const generatePodcastAudio = async (script, hostName, guestName, hostVoice, guestVoice) => {
+        const cleaned = script.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
         const response = await ai.models.generateContent({
           model: "gemini-2.5-flash-preview-tts",
-          contents: [{ parts: [{ text: cleanedScript }] }],
+          contents: [{ parts: [{ text: cleaned }] }],
           config: {
             responseModalities: [Modality.AUDIO],
             speechConfig: {
@@ -580,444 +494,350 @@
           }
         });
         const parts = response.candidates?.[0]?.content?.parts;
-        if (!parts || !parts[0].inlineData) throw new Error(`No audio generated. Reason: ${response.candidates?.[0]?.finishReason}`);
+        if (!parts?.[0]?.inlineData?.data) throw new Error("No audio data.");
         return parts[0].inlineData.data;
       };
 
-
       // ==========================================
-      // 5. COMPONENTS
+      // 4. COMPONENTS
       // ==========================================
 
-      const ScriptSection: React.FC<{
-        onScriptReady: (script: string) => void;
-        hostName: string;
-        setHostName: (name: string) => void;
-        guestName: string;
-        setGuestName: (name: string) => void;
-        topic: string;
-        setTopic: (topic: string) => void;
-        setRssArticles: (articles: RssArticle[]) => void;
-        setSearchSources: (sources: { title: string; uri: string }[]) => void;
-      }> = ({ onScriptReady, hostName, setHostName, guestName, setGuestName, topic, setTopic, setRssArticles, setSearchSources }) => {
+      const ScriptSection = ({ onScriptReady, hostName, setHostName, guestName, setGuestName, topic, setTopic, setRssArticles, setSearchSources }) => {
         const [loading, setLoading] = useState(false);
-        const [loadingStatus, setLoadingStatus] = useState<string>("");
+        const [status, setStatus] = useState("");
         const [useSearch, setUseSearch] = useState(() => localStorage.getItem('useSearch') === 'true');
         const [useRss, setUseRss] = useState(() => localStorage.getItem('useRss') === 'true');
         const [showRssInput, setShowRssInput] = useState(false);
-        const [rssFeeds, setRssFeeds] = useState<string[]>(() => {
-          try { return JSON.parse(localStorage.getItem('rssFeedsList') || '[]'); } catch { return []; }
+        const [rssFeeds, setRssFeeds] = useState(() => {
+            try { return JSON.parse(localStorage.getItem('rssFeedsList') || '[]'); } catch { return []; }
         });
-        const [newRssInput, setNewRssInput] = useState('');
-        const [currentScript, setCurrentScript] = useState('');
-        const [sources, setSources] = useState<{ title: string; uri: string }[]>([]);
-        const [localRssArticles, setLocalRssArticles] = useState<RssArticle[]>([]);
+        const [newRss, setNewRss] = useState('');
+        const [script, setScript] = useState('');
+        const [sources, setSources] = useState([]);
+        const [localRss, setLocalRss] = useState([]);
         const [showSettings, setShowSettings] = useState(false);
-        const [systemInstruction, setSystemInstruction] = useState(() => localStorage.getItem('systemInstruction') || "");
+        const [sysInst, setSysInst] = useState(() => localStorage.getItem('sysInst') || "");
 
-        useEffect(() => { localStorage.setItem('useSearch', useSearch.toString()); }, [useSearch]);
-        useEffect(() => { localStorage.setItem('useRss', useRss.toString()); if(useRss) setShowRssInput(true); }, [useRss]);
-        useEffect(() => { localStorage.setItem('rssFeedsList', JSON.stringify(rssFeeds)); }, [rssFeeds]);
-        useEffect(() => { localStorage.setItem('systemInstruction', systemInstruction); }, [systemInstruction]);
+        useEffect(() => localStorage.setItem('useSearch', useSearch), [useSearch]);
+        useEffect(() => { localStorage.setItem('useRss', useRss); if(useRss) setShowRssInput(true); }, [useRss]);
+        useEffect(() => localStorage.setItem('rssFeedsList', JSON.stringify(rssFeeds)), [rssFeeds]);
+        useEffect(() => localStorage.setItem('sysInst', sysInst), [sysInst]);
 
-        const handleAddRssFeed = () => {
-          if (newRssInput.trim() && !rssFeeds.includes(newRssInput.trim())) {
-            setRssFeeds([...rssFeeds, newRssInput.trim()]);
-          }
-          setNewRssInput('');
-        };
+        const addFeed = () => { if(newRss && !rssFeeds.includes(newRss)) setRssFeeds([...rssFeeds, newRss]); setNewRss(''); };
+        const removeFeed = (i) => { const n = [...rssFeeds]; n.splice(i, 1); setRssFeeds(n); };
 
         const handleGenerate = async () => {
-          if (!topic.trim() || !hostName.trim() || !guestName.trim()) return;
-          setLoading(true);
-          setSources([]); setSearchSources([]); setLocalRssArticles([]); setRssArticles([]);
-          let rssContent = "";
+          if(!topic || !hostName || !guestName) return;
+          setLoading(true); setSources([]); setSearchSources([]); setLocalRss([]); setRssArticles([]);
           try {
-            if (useRss && rssFeeds.length > 0) {
-              setLoadingStatus("Lese & Analysiere RSS Feeds...");
-              const { combinedContent, articles } = await fetchRssFeeds(rssFeeds);
-              rssContent = combinedContent;
-              setRssArticles(articles); setLocalRssArticles(articles);
-            }
-            setLoadingStatus("Schreibe Deep Dive Skript...");
-            const result = await generateScript(topic, hostName, guestName, useSearch, rssContent, systemInstruction);
-            setCurrentScript(result.script);
-            if (result.searchSources) { setSources(result.searchSources); setSearchSources(result.searchSources); }
-            onScriptReady(result.script);
-          } catch (error) {
-            console.error(error);
-            alert("Fehler beim Generieren des Skripts.");
-          } finally {
-            setLoading(false); setLoadingStatus("");
-          }
+             let rssContent = "";
+             if(useRss && rssFeeds.length) {
+                 setStatus("Lese Feeds...");
+                 const res = await fetchRssFeeds(rssFeeds);
+                 rssContent = res.combinedContent;
+                 setRssArticles(res.articles);
+                 setLocalRss(res.articles);
+             }
+             setStatus("Schreibe Skript...");
+             const res = await generateScript(topic, hostName, guestName, useSearch, rssContent, sysInst);
+             setScript(res.script);
+             if(res.searchSources) { setSources(res.searchSources); setSearchSources(res.searchSources); }
+             onScriptReady(res.script);
+          } catch(e) { alert("Fehler: " + e.message); }
+          finally { setLoading(false); }
         };
 
         return (
-          <div className="card p-8 transition-all hover:shadow-lg">
-            <div className="border-b border-[#c0ae66] pb-4 mb-6">
-              <h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide">
-                <Sparkles className="w-5 h-5 text-[#c0ae66]" /> SCHRITT 1: SKRIPT GENERIEREN
-              </h2>
-            </div>
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2">Name Sprecher 1</label>
-                  <input type="text" value={hostName} onChange={(e) => setHostName(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200" />
+          <div className="card p-8">
+             <div className="border-b border-[#c0ae66] pb-4 mb-6">
+               <h2 className="text-xl font-medium flex items-center gap-2"><Sparkles className="text-[#c0ae66]"/> SCHRITT 1: SKRIPT</h2>
+             </div>
+             <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                    <div><label className="text-xs font-bold uppercase mb-2 block">Host</label><input className="w-full rounded-xl p-3 border" value={hostName} onChange={e=>setHostName(e.target.value)}/></div>
+                    <div><label className="text-xs font-bold uppercase mb-2 block">Gast</label><input className="w-full rounded-xl p-3 border" value={guestName} onChange={e=>setGuestName(e.target.value)}/></div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2">Name Sprecher 2</label>
-                  <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200" />
+                <div><label className="text-xs font-bold uppercase mb-2 block">Thema</label><input className="w-full rounded-xl p-3 border" value={topic} onChange={e=>setTopic(e.target.value)}/></div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <label className="flex gap-2 p-4 bg-[#f9f9f9] border rounded-xl items-center"><input type="checkbox" checked={useSearch} onChange={e=>setUseSearch(e.target.checked)}/> Google Search</label>
+                    <label className="flex gap-2 p-4 bg-[#f9f9f9] border rounded-xl items-center"><input type="checkbox" checked={useRss} onChange={e=>setUseRss(e.target.checked)}/> RSS Feeds</label>
                 </div>
-              </div>
-              <div>
-                  <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2">Podcast Thema</label>
-                  <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="flex items-center gap-3 p-4 rounded-2xl bg-[#f9f9f9] border border-dashed border-[#d1d5db] cursor-pointer">
-                    <input type="checkbox" checked={useSearch} onChange={(e) => setUseSearch(e.target.checked)} className="w-4 h-4 accent-[#c0ae66]" />
-                    <span className="text-sm font-medium text-[#181818]">Google Search Grounding</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-4 rounded-2xl bg-[#f9f9f9] border border-dashed border-[#d1d5db] cursor-pointer">
-                    <input type="checkbox" checked={useRss} onChange={(e) => {setUseRss(e.target.checked); if(e.target.checked) setShowRssInput(true);}} className="w-4 h-4 accent-[#c0ae66]" />
-                    <span className="text-sm font-medium text-[#181818]">RSS Feeds einbinden</span>
-                  </label>
-              </div>
-              {useRss && showRssInput && (
-                  <div className="bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-6 shadow-sm space-y-4">
-                    <div className="flex gap-2">
-                      <input type="text" value={newRssInput} onChange={(e) => setNewRssInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddRssFeed()} placeholder="Feed URL..." className="flex-1 rounded-full px-4 py-2 text-sm border border-gray-200" />
-                      <button onClick={handleAddRssFeed} className="btn-primary w-10 h-10 rounded-full flex items-center justify-center"><Plus className="w-5 h-5" /></button>
+                
+                {useRss && (
+                    <div className="bg-white border rounded-xl p-4">
+                        <div className="flex gap-2 mb-2"><input className="flex-1 rounded-full px-4 border" value={newRss} onChange={e=>setNewRss(e.target.value)} placeholder="Feed URL"/><button onClick={addFeed} className="btn-primary w-10 h-10 rounded-full flex justify-center items-center"><Plus/></button></div>
+                        <ul>{rssFeeds.map((u,i)=><li key={i} className="flex justify-between text-sm p-2 bg-gray-50 rounded mb-1">{u}<button onClick={()=>removeFeed(i)}><Trash2 className="w-4 h-4 text-red-500"/></button></li>)}</ul>
                     </div>
-                    <ul className="space-y-2 max-h-40 overflow-y-auto">
-                      {rssFeeds.map((url, idx) => (
-                        <li key={idx} className="flex items-center justify-between bg-[#f9f9f9] px-4 py-2 rounded-xl text-sm">
-                          <span className="truncate mr-2">{url}</span>
-                          <button onClick={() => {const n=[...rssFeeds]; n.splice(idx,1); setRssFeeds(n);}} className="text-[#717684] hover:text-[#c0392b]"><Trash2 className="w-4 h-4" /></button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-              )}
-              <div className="flex justify-end">
-                  <button onClick={() => setShowSettings(!showSettings)} className="flex items-center gap-2 text-xs text-[#717684] bg-[#f9f9f9] px-3 py-1.5 rounded-full">
-                      <Settings className="w-3 h-3" /> {showSettings ? 'Einstellungen verbergen' : 'Erweiterte Einstellungen'}
-                  </button>
-              </div>
-              {showSettings && (
-                  <div className="bg-[#f9f9f9] border border-[rgba(0,0,0,0.05)] rounded-2xl p-6">
-                      <div className="flex justify-between mb-2"><label className="text-xs font-bold uppercase">System Prompt</label><button onClick={() => setSystemInstruction("")} className="text-xs text-[#c0ae66]"><RotateCcw className="w-3 h-3 inline"/> Reset</button></div>
-                      <textarea value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} rows={6} className="w-full rounded-xl p-3 text-xs font-mono border border-gray-200" />
-                  </div>
-              )}
-              <button onClick={handleGenerate} disabled={loading || !topic} className="btn-primary w-full flex items-center justify-center gap-2 px-8 py-4 rounded-full font-bold uppercase text-sm">
-                  {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> {loadingStatus || "Generiere..."}</> : <><Sparkles className="w-4 h-4" /> Skript Generieren</>}
-              </button>
-              {currentScript && (
-                <div className="pt-8 border-t border-[rgba(0,0,0,0.05)]">
-                  <textarea value={currentScript} onChange={(e) => {setCurrentScript(e.target.value); onScriptReady(e.target.value);}} rows={12} className="w-full bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-6 font-mono text-sm shadow-inner" />
-                  {localRssArticles.length > 0 && (
-                    <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl border border-[rgba(0,0,0,0.05)]">
-                      <h4 className="text-xs font-bold text-[#c0ae66] uppercase mb-4 border-b border-[#c0ae66] pb-2 inline-block">Verwendete RSS-Quellen</h4>
-                      <ul className="space-y-3">{localRssArticles.map((a, i) => (
-                          <li key={i} className="flex flex-col gap-1 text-sm">
-                            <div className="font-medium flex gap-2"><Rss className="w-4 h-4 text-[#c0ae66]"/> {a.title}</div>
-                            <div className="text-xs text-[#717684] pl-6"><span className="uppercase font-semibold">{a.source}</span> • <a href={a.link} target="_blank" className="text-[#c0ae66] hover:underline">Artikel öffnen <ExternalLink className="w-3 h-3 inline"/></a></div>
-                          </li>
-                      ))}</ul>
+                )}
+
+                <button onClick={()=>setShowSettings(!showSettings)} className="text-xs text-gray-500 flex items-center gap-1"><Settings className="w-3 h-3"/> Einstellungen</button>
+                {showSettings && <textarea className="w-full p-3 border rounded-xl text-xs font-mono" rows={4} value={sysInst} onChange={e=>setSysInst(e.target.value)} placeholder="System Prompt..."/>}
+                
+                <button onClick={handleGenerate} disabled={loading} className="btn-primary w-full py-4 rounded-full font-bold uppercase flex justify-center items-center gap-2">{loading?<Loader2 className="animate-spin"/>:<Sparkles/>} Generieren</button>
+                
+                {script && (
+                    <div className="mt-8 border-t pt-8">
+                        <textarea className="w-full p-6 border rounded-xl font-mono text-sm shadow-inner" rows={12} value={script} onChange={e=>{setScript(e.target.value); onScriptReady(e.target.value);}}/>
+                        {localRss.length > 0 && <div className="mt-4 bg-gray-50 p-4 rounded-xl text-sm"><h4 className="font-bold mb-2">RSS Quellen:</h4><ul>{localRss.map((a,i)=><li key={i}><a href={a.link} target="_blank" className="text-[#c0ae66] hover:underline">{a.title} ({a.source})</a></li>)}</ul></div>}
+                        {sources.length > 0 && <div className="mt-4 bg-gray-50 p-4 rounded-xl text-sm"><h4 className="font-bold mb-2">Google Quellen:</h4><ul>{sources.map((s,i)=><li key={i}><a href={s.uri} target="_blank" className="text-[#c0ae66] hover:underline">{s.title}</a></li>)}</ul></div>}
                     </div>
-                  )}
-                  {sources.length > 0 && (
-                    <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl border border-[rgba(0,0,0,0.05)]">
-                      <h4 className="text-xs font-bold text-[#c0ae66] uppercase mb-4 border-b border-[#c0ae66] pb-2 inline-block">Google Search Quellen</h4>
-                      <ul className="space-y-2">{sources.map((s, i) => <li key={i} className="flex gap-2 text-sm"><Globe className="w-4 h-4 text-[#c0ae66]"/><a href={s.uri} target="_blank" className="hover:text-[#c0ae66] hover:underline truncate">{s.title || s.uri}</a></li>)}</ul>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+             </div>
           </div>
         );
       };
 
-      const AudioSection: React.FC<{ script: string, hostName: string, guestName: string, topic: string, rssArticles?: RssArticle[], searchSources?: { title: string; uri: string }[] }> = ({ script, hostName, guestName, topic, rssArticles, searchSources }) => {
-        const [hostVoice, setHostVoice] = useState<VoiceName>(() => (localStorage.getItem('hostVoice') as VoiceName) || VoiceName.Kore);
-        const [guestVoice, setGuestVoice] = useState<VoiceName>(() => (localStorage.getItem('guestVoice') as VoiceName) || VoiceName.Puck);
-        const [introFile, setIntroFile] = useState<StoredAudioFile | null>(null);
-        const [outroFile, setOutroFile] = useState<StoredAudioFile | null>(null);
-        const [musicSlots, setMusicSlots] = useState<(StoredAudioFile | null)[]>([null, null, null]);
-        const [selectedMusicIndex, setSelectedMusicIndex] = useState<MusicSlotIndex>(() => parseInt(localStorage.getItem('selectedMusicIndex') || '-1') as MusicSlotIndex);
-        const [musicVolume, setMusicVolume] = useState(() => parseFloat(localStorage.getItem('musicVolume') || '0.1'));
-        const [introVolume, setIntroVolume] = useState(() => parseFloat(localStorage.getItem('introVolume') || '0.5'));
-        const [outroVolume, setOutroVolume] = useState(() => parseFloat(localStorage.getItem('outroVolume') || '0.5'));
+      const AudioSection = ({ script, hostName, guestName, topic, rssArticles, searchSources }) => {
+        const [hostVoice, setHostVoice] = useState(() => localStorage.getItem('hostVoice') || VoiceName.Kore);
+        const [guestVoice, setGuestVoice] = useState(() => localStorage.getItem('guestVoice') || VoiceName.Puck);
+        
+        const [introFile, setIntroFile] = useState(null);
+        const [outroFile, setOutroFile] = useState(null);
+        const [musicSlots, setMusicSlots] = useState([null, null, null]);
+        
+        const [selMusicIdx, setSelMusicIdx] = useState(() => parseInt(localStorage.getItem('selMusicIdx') || '-1'));
+        const [musVol, setMusVol] = useState(() => parseFloat(localStorage.getItem('musVol') || '0.1'));
+        const [intVol, setIntVol] = useState(() => parseFloat(localStorage.getItem('intVol') || '0.5'));
+        const [outVol, setOutVol] = useState(() => parseFloat(localStorage.getItem('outVol') || '0.5'));
         
         const [loading, setLoading] = useState(false);
-        const [audioUrl, setAudioUrl] = useState<string | null>(null);
-        const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-        const [error, setError] = useState<string | null>(null);
-        const [previewLoading, setPreviewLoading] = useState<string | null>(null);
-        const [playingPreview, setPlayingPreview] = useState<string | null>(null);
-        const previewAudioRef = useRef<HTMLAudioElement | null>(null);
-        const [showEmailModal, setShowEmailModal] = useState(false);
-        const [emailTo, setEmailTo] = useState('');
-        const [emailSubject, setEmailSubject] = useState('');
-        const [emailBody, setEmailBody] = useState('');
-        const [isSendingEmail, setIsSendingEmail] = useState(false);
-        const [emailSentSuccess, setEmailSentSuccess] = useState(false);
-        const [saveStatus, setSaveStatus] = useState<'idle'|'saved'>('idle');
+        const [audioUrl, setAudioUrl] = useState(null);
+        const [audioBlob, setAudioBlob] = useState(null);
+        const [prevPlaying, setPrevPlaying] = useState(null);
+        const prevRef = useRef(null);
+
+        const [showMail, setShowMail] = useState(false);
+        const [mailTo, setMailTo] = useState("");
+        const [mailSubj, setMailSubj] = useState("");
+        const [mailBody, setMailBody] = useState("");
+        const [sending, setSending] = useState(false);
+        const [sent, setSent] = useState(false);
 
         useEffect(() => {
-          getAudioFile('intro').then(setIntroFile);
-          getAudioFile('outro').then(setOutroFile);
-          Promise.all([getAudioFile('music_0'), getAudioFile('music_1'), getAudioFile('music_2')]).then(setMusicSlots);
+           getAudioFile('intro').then(setIntroFile);
+           getAudioFile('outro').then(setOutroFile);
+           Promise.all([getAudioFile('m0'), getAudioFile('m1'), getAudioFile('m2')]).then(setMusicSlots);
         }, []);
 
         useEffect(() => { localStorage.setItem('hostVoice', hostVoice); }, [hostVoice]);
         useEffect(() => { localStorage.setItem('guestVoice', guestVoice); }, [guestVoice]);
-        useEffect(() => { localStorage.setItem('selectedMusicIndex', selectedMusicIndex.toString()); }, [selectedMusicIndex]);
-        useEffect(() => { localStorage.setItem('musicVolume', musicVolume.toString()); }, [musicVolume]);
-        useEffect(() => { localStorage.setItem('introVolume', introVolume.toString()); }, [introVolume]);
-        useEffect(() => { localStorage.setItem('outroVolume', outroVolume.toString()); }, [outroVolume]);
+        useEffect(() => { localStorage.setItem('selMusicIdx', selMusicIdx); }, [selMusicIdx]);
+        useEffect(() => { localStorage.setItem('musVol', musVol); localStorage.setItem('intVol', intVol); localStorage.setItem('outVol', outVol); }, [musVol, intVol, outVol]);
 
-        const handleManualSave = () => {
-          localStorage.setItem('hostVoice', hostVoice);
-          localStorage.setItem('guestVoice', guestVoice);
-          localStorage.setItem('selectedMusicIndex', selectedMusicIndex.toString());
-          localStorage.setItem('musicVolume', musicVolume.toString());
-          localStorage.setItem('introVolume', introVolume.toString());
-          localStorage.setItem('outroVolume', outroVolume.toString());
-          setSaveStatus('saved'); setTimeout(()=>setSaveStatus('idle'), 2000);
-        };
+        const handleSave = () => alert("Einstellungen gespeichert!");
 
-        const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'intro' | 'outro' | 'music', index?: number) => {
-          if (e.target.files?.[0]) {
-            const file = e.target.files[0];
-            if (type === 'intro') { await storeAudioFile('intro', file); setIntroFile({ name: file.name, blob: file }); }
-            else if (type === 'outro') { await storeAudioFile('outro', file); setOutroFile({ name: file.name, blob: file }); }
-            else if (type === 'music' && index !== undefined) {
-              await storeAudioFile(`music_${index}`, file);
-              const s = [...musicSlots]; s[index] = { name: file.name, blob: file }; setMusicSlots(s); setSelectedMusicIndex(index as MusicSlotIndex);
-            }
-          }
+        const handleFile = async (e, type, idx) => {
+           const f = e.target.files[0];
+           if(!f) return;
+           if(type === 'intro') { await storeAudioFile('intro', f); setIntroFile({name:f.name, blob:f}); }
+           else if(type === 'outro') { await storeAudioFile('outro', f); setOutroFile({name:f.name, blob:f}); }
+           else { await storeAudioFile(`m${idx}`, f); const s=[...musicSlots]; s[idx]={name:f.name, blob:f}; setMusicSlots(s); setSelMusicIdx(idx); }
         };
         
-        const handleFileDelete = async (type: 'intro' | 'outro' | 'music', index?: number) => {
-          if (type === 'intro') { await deleteAudioFile('intro'); setIntroFile(null); }
-          else if (type === 'outro') { await deleteAudioFile('outro'); setOutroFile(null); }
-          else if (type === 'music' && index !== undefined) { await deleteAudioFile(`music_${index}`); const s = [...musicSlots]; s[index] = null; setMusicSlots(s); if(selectedMusicIndex===index) setSelectedMusicIndex(-1); }
+        const handleDelete = async (type, idx) => {
+           if(type === 'intro') { await deleteAudioFile('intro'); setIntroFile(null); }
+           else if(type === 'outro') { await deleteAudioFile('outro'); setOutroFile(null); }
+           else { await deleteAudioFile(`m${idx}`); const s=[...musicSlots]; s[idx]=null; setMusicSlots(s); if(selMusicIdx===idx) setSelMusicIdx(-1); }
         };
 
-        const playPreview = (blob: Blob, id: string) => {
-          if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
-          if (playingPreview === id) { setPlayingPreview(null); return; }
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          audio.onended = () => { setPlayingPreview(null); URL.revokeObjectURL(url); };
-          previewAudioRef.current = audio;
-          audio.play();
-          setPlayingPreview(id);
+        const playPreview = (blob, id) => {
+           if(prevRef.current) { prevRef.current.pause(); prevRef.current = null; }
+           if(prevPlaying === id) { setPrevPlaying(null); return; }
+           const url = URL.createObjectURL(blob);
+           const a = new Audio(url);
+           a.onended = () => { setPrevPlaying(null); URL.revokeObjectURL(url); };
+           prevRef.current = a;
+           a.play();
+           setPrevPlaying(id);
         };
 
-        const handleVoicePreview = async (voice: VoiceName, id: 'host' | 'guest') => {
-          if (playingPreview === id) { playPreview(new Blob(), id); return; } // Stop
-          setPreviewLoading(id);
-          try {
-            const b64 = await generateVoicePreview(voice, `Hallo, ich bin ${voice}.`);
-            const ctx = new AudioContext();
-            const buf = await decodeBase64Audio(b64, ctx);
-            playPreview(audioBufferToWav(buf), id);
-            ctx.close();
-          } catch { alert("Preview failed"); } finally { setPreviewLoading(null); }
+        const previewVoice = async (voice, id) => {
+           try {
+             const b64 = await generateVoicePreview(voice, `Hallo, ich bin ${voice}.`);
+             const ctx = new AudioContext();
+             const buf = await decodeBase64Audio(b64, ctx);
+             const blob = audioBufferToWav(buf);
+             playPreview(blob, id);
+             ctx.close();
+           } catch(e) { console.error(e); }
         };
 
-        const handleGenerateAudio = async () => {
-          if (!script) return;
-          setLoading(true); setError(null); setAudioUrl(null); setAudioBlob(null);
-          let ctx: AudioContext | null = null;
-          try {
-              ctx = new AudioContext();
+        const generate = async () => {
+           if(!script) return;
+           setLoading(true); setAudioUrl(null);
+           try {
+              const ctx = new AudioContext();
               const vB64 = await generatePodcastAudio(script, hostName, guestName, hostVoice, guestVoice);
               const vBuf = await decodeBase64Audio(vB64, ctx);
-              let mBuf = null, iBuf = null, oBuf = null;
-              if (selectedMusicIndex !== -1 && musicSlots[selectedMusicIndex]) mBuf = await decodeAudioBlob(musicSlots[selectedMusicIndex]!.blob, ctx);
-              if (introFile) iBuf = await decodeAudioBlob(introFile.blob, ctx);
-              if (outroFile) oBuf = await decodeAudioBlob(outroFile.blob, ctx);
-              const mix = await mixPodcastSequence(vBuf, mBuf, iBuf, oBuf, musicVolume, introVolume, outroVolume);
-              const blob = audioBufferToMp3(mix);
-              setAudioUrl(URL.createObjectURL(blob)); setAudioBlob(blob);
-          } catch (e: any) { setError(e.message); } finally { ctx?.close(); setLoading(false); }
+              let mBuf=null, iBuf=null, oBuf=null;
+              if(selMusicIdx !== -1 && musicSlots[selMusicIdx]) mBuf = await decodeAudioBlob(musicSlots[selMusicIdx].blob, ctx);
+              if(introFile) iBuf = await decodeAudioBlob(introFile.blob, ctx);
+              if(outroFile) oBuf = await decodeAudioBlob(outroFile.blob, ctx);
+              
+              const mix = await mixPodcastSequence(vBuf, mBuf, iBuf, oBuf, musVol, intVol, outVol);
+              const mp3 = audioBufferToMp3(mix);
+              setAudioBlob(mp3);
+              setAudioUrl(URL.createObjectURL(mp3));
+              ctx.close();
+           } catch(e) { alert("Audio Error: " + e.message); }
+           finally { setLoading(false); }
         };
 
-        const openEmailModal = () => {
-          const date = new Date().toLocaleDateString('de-DE');
-          const subj = `AI-Podcast: ${topic.substring(0, 25)}... - ${date}`;
-          let sources = "";
-          if (rssArticles?.length) {
-              sources += "\n\n🔗 RSS QUELLEN:\n================================";
-              rssArticles.forEach(a => sources += `\n• ${a.title} (${a.source})\n  ${a.link}`);
-              sources += "\n================================";
-          }
-          if (searchSources?.length) {
-              sources += "\n\n🔗 WEB QUELLEN:\n================================";
-              searchSources.forEach(s => sources += `\n• ${s.title}\n  ${s.uri}`);
-              sources += "\n================================";
-          }
-          setEmailSubject(subj);
-          setEmailBody(`Hallo,\n\nhier ist die neue Podcast-Folge über "${topic}".\n\n🎙️ ${hostName} & ${guestName}\n📅 ${date}\n\nDie MP3 ist im Anhang.${sources}\n\nBeste Grüße,\nGemini Podcast Studio`);
-          setShowEmailModal(true); setEmailSentSuccess(false);
+        const openMail = () => {
+           const d = new Date().toLocaleDateString();
+           setMailSubj(`Podcast: ${topic.substring(0,20)}... - ${d}`);
+           let src = "";
+           if(rssArticles?.length) { src += "\n\nRSS:\n" + rssArticles.map(a=>`• ${a.title} (${a.link})`).join("\n"); }
+           if(searchSources?.length) { src += "\n\nWEB:\n" + searchSources.map(s=>`• ${s.title} (${s.uri})`).join("\n"); }
+           setMailBody(`Hier ist dein Podcast!\n\n${src}`);
+           setShowMail(true);
         };
 
-        const handleSendEmail = async () => {
-          if (!emailTo || !audioBlob) return;
-          setIsSendingEmail(true);
-          try {
+        const sendMail = async () => {
+           if(!mailTo || !audioBlob) return;
+           setSending(true);
+           try {
               const b64 = await blobToBase64(audioBlob);
-              const payload = { to: emailTo, subject: emailSubject, body: emailBody, attachmentName: "podcast.mp3", attachmentBase64: b64 };
+              const payload = { to: mailTo, subject: mailSubj, body: mailBody, attachmentName: "podcast.mp3", attachmentBase64: b64 };
               let res;
-              try { res = await fetch(N8N_WEBHOOK_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }); }
-              catch { res = await fetch(`https://corsproxy.io/?${encodeURIComponent(N8N_WEBHOOK_URL)}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }); }
-              if (!res.ok) throw new Error("Send failed");
-              setEmailSentSuccess(true); setTimeout(() => setShowEmailModal(false), 2000);
-          } catch (e) { alert("Mail fail (Size limit?)"); } finally { setIsSendingEmail(false); }
+              try { res = await fetch(N8N_WEBHOOK_URL, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); }
+              catch { res = await fetch(`https://corsproxy.io/?${encodeURIComponent(N8N_WEBHOOK_URL)}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); }
+              
+              if(!res.ok) throw new Error("Send failed");
+              setSent(true); setTimeout(()=>setShowMail(false), 2000);
+           } catch(e) { alert("Mail Error: " + e.message); }
+           finally { setSending(false); }
         };
 
         return (
-          <div className={`card p-8 transition-all hover:shadow-xl ${!script ? 'opacity-50 pointer-events-none' : ''}`}>
-            <div className="border-b border-[#c0ae66] pb-4 mb-8 flex justify-between">
-                <h2 className="text-xl font-medium flex items-center gap-2"><Volume2 className="w-5 h-5 text-[#c0ae66]"/> SCHRITT 2: AUDIO ERSTELLEN</h2>
-                <button onClick={handleManualSave} className="flex items-center gap-2 px-4 py-2 rounded-full border bg-[#f9f9f9] text-xs">{saveStatus==='saved'?<><CheckCircle2 className="w-3 h-3 text-green-500"/>Gespeichert</>:<><Save className="w-3 h-3"/>Speichern</>}</button>
-            </div>
-            <div className="space-y-10">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {[hostVoice, guestVoice].map((voice, i) => (
-                      <div key={i} className="bg-[#f9f9f9] p-4 rounded-2xl border">
-                          <label className="text-xs font-medium text-[#717684] uppercase mb-2 block">{i===0?hostName:guestName}</label>
-                          <div className="flex gap-3">
-                              <select value={voice} onChange={(e) => i===0?setHostVoice(e.target.value as VoiceName):setGuestVoice(e.target.value as VoiceName)} className="w-full rounded-xl px-4 py-3 border border-gray-200">{Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}</select>
-                              <button onClick={() => handleVoicePreview(voice, i===0?'host':'guest')} className="w-12 bg-white rounded-xl flex items-center justify-center border border-gray-200">{previewLoading===(i===0?'host':'guest')?<Loader2 className="animate-spin w-4 h-4"/>:<Play className="w-4 h-4"/>}</button>
-                          </div>
+          <div className={`card p-8 ${!script ? 'opacity-50 pointer-events-none' : ''}`}>
+             <div className="border-b border-[#c0ae66] pb-4 mb-6 flex justify-between">
+                <h2 className="text-xl font-medium flex items-center gap-2"><Volume2 className="text-[#c0ae66]"/> SCHRITT 2: AUDIO</h2>
+                <button onClick={handleSave} className="text-xs bg-gray-100 px-3 py-1 rounded-full">Speichern</button>
+             </div>
+             
+             <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                   {[hostVoice, guestVoice].map((v, i) => (
+                      <div key={i} className="bg-gray-50 p-4 rounded-xl">
+                         <label className="text-xs font-bold block mb-2">{i===0?hostName:guestName}</label>
+                         <div className="flex gap-2">
+                            <select className="flex-1 rounded-lg border p-2" value={v} onChange={e=>i===0?setHostVoice(e.target.value):setGuestVoice(e.target.value)}>{Object.values(VoiceName).map(x=><option key={x} value={x}>{x}</option>)}</select>
+                            <button onClick={()=>previewVoice(v, i===0?'h':'g')} className="bg-white p-2 border rounded-lg"><Play className="w-4 h-4"/></button>
+                         </div>
                       </div>
-                  ))}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {['intro', 'outro'].map((type) => {
-                      const file = type==='intro'?introFile:outroFile;
-                      const vol = type==='intro'?introVolume:outroVolume;
-                      const setVol = type==='intro'?setIntroVolume:setOutroVolume;
-                      return (
-                          <div key={type} className={`rounded-2xl p-5 border ${file?'bg-[#fcfcfc] border-[#c0ae66]':'bg-[#f9f9f9]'}`}>
-                              <div className="flex justify-between mb-3"><span className="capitalize font-medium">{type}</span><div className="flex gap-2">{file && <><button onClick={()=>playPreview(file.blob, type)} className="text-[#c0ae66]"><Play className="w-4 h-4"/></button><button onClick={()=>handleFileDelete(type as any)}><Trash2 className="w-4 h-4"/></button></>}</div></div>
-                              <label className="block w-full bg-white border rounded-xl py-3 px-4 text-xs text-[#717684] mb-3 truncate cursor-pointer">{file?file.name:"Wähle MP3..."}<input type="file" accept="audio/*" className="hidden" onChange={(e)=>handleFileUpload(e, type as any)}/></label>
-                              <div className="flex items-center gap-2"><Volume2 className="w-3 h-3"/><input type="range" min="0" max="1.2" step="0.1" value={vol} onChange={(e)=>setVol(parseFloat(e.target.value))} className="w-full h-1 accent-[#c0ae66]"/></div>
-                          </div>
-                      )
-                  })}
-              </div>
-              <div>
-                  <div className="flex justify-between border-b pb-2 mb-4"><h3 className="text-xs font-bold uppercase flex gap-2"><Music className="w-3 h-3"/> Hintergrund-Musik</h3><div className="flex items-center gap-2"><Volume2 className="w-3 h-3"/><input type="range" min="0" max="0.5" step="0.01" value={musicVolume} onChange={(e)=>setMusicVolume(parseFloat(e.target.value))} className="w-20 h-1 accent-[#c0ae66]"/></div></div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <button onClick={()=>{setSelectedMusicIndex(-1); playPreview(new Blob(), 'none');}} className={`p-4 rounded-2xl border h-32 flex flex-col items-center justify-center ${selectedMusicIndex===-1?'border-[#c0ae66] bg-[rgba(192,174,102,0.1)]':'bg-white'}`}>Keine Musik</button>
-                      {[0,1,2].map((idx) => {
-                          const slot = musicSlots[idx];
-                          return (
-                              <div key={idx} onClick={()=>slot && setSelectedMusicIndex(idx as any)} className={`relative p-4 rounded-2xl border h-32 flex flex-col justify-between ${selectedMusicIndex===idx?'border-[#c0ae66] bg-[rgba(192,174,102,0.15)]':'bg-white hover:border-[#c0ae66]'}`}>
-                                  {!slot ? <label className="w-full h-full flex flex-col items-center justify-center text-xs text-[#c0ae66] cursor-pointer border-2 border-dashed rounded-xl"><Upload className="w-4 h-4 mb-1"/>Upload<input type="file" accept="audio/*" className="hidden" onChange={(e)=>handleFileUpload(e, 'music', idx)}/></label> : 
-                                  <><div className="text-xs font-medium truncate">{slot.name}</div><div className="flex justify-between mt-auto pt-2 relative z-10"><button onClick={(e)=>{e.stopPropagation(); playPreview(slot.blob, `music_${idx}`)}} className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm hover:text-[#c0ae66]"><Play className="w-3 h-3"/></button><button onClick={(e)=>{e.stopPropagation(); handleFileDelete('music', idx)}} className="text-[#717684] hover:text-red-500"><Trash2 className="w-4 h-4"/></button></div></>}
-                              </div>
-                          )
-                      })}
-                  </div>
-              </div>
-              <div className="flex justify-end pt-8"><button onClick={handleGenerateAudio} disabled={loading} className="btn-primary px-10 py-5 rounded-full font-bold uppercase flex gap-2">{loading?<Loader2 className="animate-spin"/>:<Music/>} Podcast Generieren</button></div>
-              {error && <div className="p-4 bg-red-50 text-red-500 rounded-xl text-center text-sm">{error}</div>}
-              {audioUrl && (
-                  <div className="bg-white rounded-2xl p-8 border border-[#c0ae66] shadow-lg animate-fade-in">
-                      <div className="flex justify-between items-center mb-6">
-                          <div className="flex gap-4 items-center"><div className="w-12 h-12 rounded-full bg-[#f9f9f9] border border-[#c0ae66] flex items-center justify-center text-[#c0ae66]"><Music/></div><div><h3 className="font-medium">Final Podcast</h3><p className="text-xs text-[#717684]">Ready to share</p></div></div>
-                          <div className="flex gap-3"><button onClick={openEmailModal} className="px-5 py-2.5 bg-[#f9f9f9] rounded-full text-sm font-medium hover:bg-gray-200 flex gap-2"><Mail className="w-4 h-4"/> Email</button><a href={audioUrl} download="podcast.mp3" className="px-5 py-2.5 bg-[#181818] text-white rounded-full text-sm font-medium flex gap-2"><Download className="w-4 h-4"/> Download</a></div>
-                      </div>
-                      <audio src={audioUrl} controls className="w-full accent-[#c0ae66]"/>
-                  </div>
-              )}
-            </div>
-            {showEmailModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
-                        <div className="p-6 border-b flex justify-between items-center"><h3 className="font-medium flex gap-2"><Mail className="text-[#c0ae66]"/> Senden</h3><button onClick={()=>setShowEmailModal(false)}><X/></button></div>
-                        <div className="p-8 space-y-4 overflow-y-auto">
-                            <input type="email" value={emailTo} onChange={(e)=>setEmailTo(e.target.value)} placeholder="Empfänger" className="w-full rounded-xl py-3 px-4 border border-gray-200"/>
-                            <input type="text" value={emailSubject} onChange={(e)=>setEmailSubject(e.target.value)} placeholder="Betreff" className="w-full rounded-xl py-3 px-4 border border-gray-200"/>
-                            <textarea value={emailBody} onChange={(e)=>setEmailBody(e.target.value)} rows={8} className="w-full rounded-xl py-3 px-4 font-mono text-sm border border-gray-200"/>
-                        </div>
-                        <div className="p-6 border-t flex justify-end gap-3">
-                            <button onClick={()=>setShowEmailModal(false)} className="px-4">Abbrechen</button>
-                            <button onClick={handleSendEmail} disabled={isSendingEmail} className="btn-primary px-6 py-2 rounded-full font-bold text-xs flex gap-2">{isSendingEmail?<Loader2 className="animate-spin"/>:(emailSentSuccess?<CheckCircle2/>:<Send/>)} {emailSentSuccess?"Gesendet":"Senden"}</button>
-                        </div>
-                    </div>
+                   ))}
                 </div>
-            )}
+
+                <div className="grid grid-cols-2 gap-6">
+                   {['intro', 'outro'].map(t => {
+                      const f = t==='intro'?introFile:outroFile;
+                      const vol = t==='intro'?intVol:outVol;
+                      const setV = t==='intro'?setIntVol:setOutVol;
+                      return (
+                         <div key={t} className="border p-4 rounded-xl">
+                            <div className="flex justify-between mb-2"><span className="capitalize font-bold">{t}</span> {f && <button onClick={()=>handleDelete(t)}><Trash2 className="w-4 h-4 text-red-500"/></button>}</div>
+                            <label className="block w-full bg-gray-50 border p-2 rounded mb-2 text-xs truncate">{f?f.name:"Upload..."}<input type="file" className="hidden" onChange={e=>handleFile(e,t)}/></label>
+                            <input type="range" min="0" max="1" step="0.1" value={vol} onChange={e=>setV(parseFloat(e.target.value))} className="w-full accent-[#c0ae66]"/>
+                         </div>
+                      );
+                   })}
+                </div>
+
+                <div>
+                   <h3 className="text-xs font-bold mb-2">Hintergrund Musik ({Math.round(musVol*100)}%)</h3>
+                   <input type="range" min="0" max="0.5" step="0.05" value={musVol} onChange={e=>setMusVol(parseFloat(e.target.value))} className="w-full mb-4 accent-[#c0ae66]"/>
+                   <div className="grid grid-cols-4 gap-2">
+                      <button onClick={()=>setSelMusicIdx(-1)} className={`border p-2 rounded-xl h-24 ${selMusicIdx===-1?'border-[#c0ae66] bg-yellow-50':''}`}>Keine</button>
+                      {[0,1,2].map(i => (
+                         <div key={i} onClick={()=>musicSlots[i] && setSelMusicIdx(i)} className={`border p-2 rounded-xl h-24 relative ${selMusicIdx===i?'border-[#c0ae66] bg-yellow-50':''}`}>
+                            {!musicSlots[i] ? <label className="flex flex-col items-center justify-center h-full text-xs text-gray-400 cursor-pointer"><Upload className="w-4 h-4 mb-1"/>Upload<input type="file" className="hidden" onChange={e=>handleFile(e,'m',i)}/></label> 
+                            : <><div className="text-xs truncate">{musicSlots[i].name}</div><button onClick={(e)=>{e.stopPropagation(); handleDelete('m',i)}} className="absolute bottom-2 right-2 text-red-400"><Trash2 className="w-4 h-4"/></button></>}
+                         </div>
+                      ))}
+                   </div>
+                </div>
+
+                <button onClick={generate} disabled={loading} className="btn-primary w-full py-4 rounded-full font-bold uppercase flex justify-center items-center gap-2">{loading?<Loader2 className="animate-spin"/>:<Music/>} Podcast Erstellen</button>
+                
+                {audioUrl && (
+                   <div className="bg-white border border-[#c0ae66] p-6 rounded-2xl shadow-lg mt-4">
+                      <div className="flex justify-between items-center mb-4">
+                         <h3 className="font-bold">Fertiger Podcast</h3>
+                         <div className="flex gap-2">
+                            <button onClick={openMail} className="bg-gray-100 px-4 py-2 rounded-full text-sm flex gap-2"><Mail className="w-4 h-4"/> Email</button>
+                            <a href={audioUrl} download="podcast.mp3" className="bg-black text-white px-4 py-2 rounded-full text-sm flex gap-2"><Download className="w-4 h-4"/> DL</a>
+                         </div>
+                      </div>
+                      <audio src={audioUrl} controls className="w-full"/>
+                   </div>
+                )}
+             </div>
+
+             {showMail && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                   <div className="bg-white p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+                      <h3 className="font-bold mb-4">Senden</h3>
+                      <input className="w-full border p-2 rounded mb-2" placeholder="Email" value={mailTo} onChange={e=>setMailTo(e.target.value)}/>
+                      <input className="w-full border p-2 rounded mb-2" placeholder="Betreff" value={mailSubj} onChange={e=>setMailSubj(e.target.value)}/>
+                      <textarea className="w-full border p-2 rounded mb-4 text-xs font-mono" rows={5} value={mailBody} onChange={e=>setMailBody(e.target.value)}/>
+                      <div className="flex justify-end gap-2">
+                         <button onClick={()=>setShowMail(false)} className="px-4 py-2 text-gray-500">Abbrechen</button>
+                         <button onClick={sendMail} disabled={sending} className="btn-primary px-6 py-2 rounded-full text-sm">{sending?'Senden...':(sent?'Gesendet!':'Abschicken')}</button>
+                      </div>
+                   </div>
+                </div>
+             )}
           </div>
         );
       };
 
-
       // ==========================================
-      // 6. APP MAIN
+      // 5. APP ROOT
       // ==========================================
+      const App = () => {
+         const [script, setScript] = useState(() => localStorage.getItem('script') || '');
+         const [topic, setTopic] = useState(() => localStorage.getItem('topic') || '');
+         const [host, setHost] = useState(() => localStorage.getItem('host') || 'Host');
+         const [guest, setGuest] = useState(() => localStorage.getItem('guest') || 'Gast');
+         const [rss, setRss] = useState([]);
+         const [src, setSrc] = useState([]);
 
-      const App: React.FC = () => {
-        const [script, setScript] = useState(() => localStorage.getItem('podcastScript') || '');
-        const [topic, setTopic] = useState(() => localStorage.getItem('podcastTopic') || '');
-        const [hostName, setHostName] = useState(() => localStorage.getItem('hostName') || 'Host');
-        const [guestName, setGuestName] = useState(() => localStorage.getItem('guestName') || 'Guest');
-        const [rssArticles, setRssArticles] = useState<RssArticle[]>(() => JSON.parse(localStorage.getItem('rssArticles') || '[]'));
-        const [searchSources, setSearchSources] = useState<{ title: string; uri: string }[]>(() => JSON.parse(localStorage.getItem('searchSources') || '[]'));
+         useEffect(() => localStorage.setItem('script', script), [script]);
+         useEffect(() => localStorage.setItem('topic', topic), [topic]);
+         useEffect(() => localStorage.setItem('host', host), [host]);
+         useEffect(() => localStorage.setItem('guest', guest), [guest]);
 
-        useEffect(() => { localStorage.setItem('hostName', hostName); }, [hostName]);
-        useEffect(() => { localStorage.setItem('guestName', guestName); }, [guestName]);
-        useEffect(() => { localStorage.setItem('podcastTopic', topic); }, [topic]);
-        useEffect(() => { localStorage.setItem('podcastScript', script); }, [script]);
-        useEffect(() => { localStorage.setItem('rssArticles', JSON.stringify(rssArticles)); }, [rssArticles]);
-        useEffect(() => { localStorage.setItem('searchSources', JSON.stringify(searchSources)); }, [searchSources]);
-
-        const handleScriptReady = (newScript: string) => {
-          setScript(newScript);
-        };
-
-        return (
-          <div className="container mx-auto max-w-[1200px] bg-white rounded-[16px] min-h-[calc(100vh-48px)] overflow-hidden shadow-sm border border-[rgba(0,0,0,0.05)]">
-            <div className="relative bg-white px-10 py-16 text-center border-b-2 border-[#c0ae66] rounded-t-[16px] overflow-hidden">
-              <div className="absolute inset-0 z-0 opacity-30" style={{backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 200"><path d="M0,50 Q300,100 600,50 T1200,50 L1200,0 L0,0 Z" fill="rgba(240,240,240,1)"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundSize: 'cover'}} />
-              <div className="relative z-10 flex flex-col items-center justify-center">
-                <img src="https://anyever.de/wp-content/themes/anyever/static/images/logo-anyever-gold.svg" alt="Any Ever Logo" className="w-[200px] h-auto mb-2 opacity-95" />
-                <div className="text-sm font-medium tracking-[0.05em] text-[#181818] uppercase mt-1">ENJOY.AUDIO</div>
-                <h1 className="text-[2.5rem] font-[100] tracking-[4px] text-[#181818] mb-4">Podcast Generator</h1>
-                <p className="text-[#717684] text-[1.1rem]">Was nur dich bewegt, an einem Ort.</p>
-              </div>
+         return (
+            <div className="container mx-auto max-w-4xl bg-white rounded-2xl shadow overflow-hidden">
+               <div className="bg-white p-10 text-center border-b-2 border-[#c0ae66] relative">
+                  <div className="relative z-10">
+                     <img src="https://anyever.de/wp-content/themes/anyever/static/images/logo-anyever-gold.svg" className="w-48 mx-auto mb-2"/>
+                     <div className="text-sm tracking-widest uppercase mb-1">ENJOY.AUDIO</div>
+                     <h1 className="text-3xl font-light tracking-widest">Podcast Generator</h1>
+                  </div>
+               </div>
+               <div className="bg-[#f9f9f9] p-8 space-y-8">
+                  <ScriptSection 
+                    onScriptReady={setScript} 
+                    hostName={host} setHostName={setHost} 
+                    guestName={guest} setGuestName={setGuest} 
+                    topic={topic} setTopic={setTopic}
+                    setRssArticles={setRss} setSearchSources={setSrc}
+                  />
+                  <AudioSection 
+                    script={script} 
+                    hostName={host} guestName={guest} 
+                    topic={topic} rssArticles={rss} searchSources={src}
+                  />
+               </div>
             </div>
-            <div className="grid grid-cols-1 gap-8 p-8 lg:p-12 bg-[#f9f9f9]">
-              <div className="flex flex-col gap-8">
-                <ScriptSection onScriptReady={handleScriptReady} hostName={hostName} setHostName={setHostName} guestName={guestName} setGuestName={setGuestName} topic={topic} setTopic={setTopic} setRssArticles={setRssArticles} setSearchSources={setSearchSources} />
-                <AudioSection script={script} hostName={hostName} guestName={guestName} topic={topic} rssArticles={rssArticles} searchSources={searchSources} />
-              </div>
-            </div>
-            <div className="text-center py-8 text-[#717684] text-xs bg-white border-t border-[rgba(0,0,0,0.05)]">Powered by Gemini 2.5 Flash & Flash-TTS • ANY EVER Audio Engine</div>
-          </div>
-        );
+         );
       };
 
-      // ==========================================
-      // 7. RENDER ROOT
-      // ==========================================
-
-      const rootElement = document.getElementById('root');
-      if (rootElement) {
-        const root = ReactDOM.createRoot(rootElement);
-        root.render(<React.StrictMode><App /></React.StrictMode>);
-      } else {
-        console.error("Root element not found");
-      }
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
     </script>
   </body>
 </html>
