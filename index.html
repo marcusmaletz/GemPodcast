@@ -14,7 +14,7 @@
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Babel Standalone for compiling React/TS in browser -->
+    <!-- Babel Standalone for compiling React in browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -69,28 +69,45 @@
       
       .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      
+      #error-log {
+        display: none;
+        position: fixed; top: 0; left: 0; width: 100%; background: #fee2e2; color: #991b1b; padding: 20px; z-index: 9999; border-bottom: 1px solid #ef4444; font-family: monospace; white-space: pre-wrap;
+      }
     </style>
 
-    <!-- Import Map for External Modules -->
+    <!-- Import Map for external libraries -->
     <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0",
-    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/"
-  }
-}
-</script>
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0",
+        "@google/genai": "https://esm.sh/@google/genai@0.1.1"
+      }
+    }
+    </script>
   </head>
   <body>
+    <!-- Error overlay for debugging on mobile/production -->
+    <div id="error-log"></div>
+    
     <div id="root"></div>
     
     <script>
-        // Polyfills for Browser Environment (Required for Google GenAI)
-        window.process = { env: { API_KEY: '' } }; 
+        // GLOBAL ERROR HANDLER
+        window.onerror = function(msg, url, line, col, error) {
+            const div = document.getElementById('error-log');
+            if(div) {
+                div.style.display = 'block';
+                div.innerText = `APP CRASH:\n${msg}\nLine: ${line}\nCheck console for details.`;
+            }
+            console.error("Global Error:", error);
+        };
+        
+        // POLYFILLS for Browser Compatibility
+        window.process = { env: { API_KEY: '' } }; // API KEY is injected by the user manually or via environment if available
+        
         window.Buffer = {
             from: (str, encoding) => {
                 if (encoding === 'base64') {
@@ -104,7 +121,7 @@
         };
     </script>
 
-    <!-- Main Application Entry - Monolithic File -->
+    <!-- Main Application Entry -->
     <script type="text/babel" data-type="module" src="index.tsx"></script>
   </body>
 </html>
