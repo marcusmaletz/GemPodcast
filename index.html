@@ -14,7 +14,7 @@
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Babel Standalone -->
+    <!-- Babel Standalone for compiling React/TS in browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -89,8 +89,8 @@
     <div id="root"></div>
     
     <script>
-        // Polyfills
-        window.process = { env: { API_KEY: '' } };
+        // Polyfills for Browser Environment (Required for Google GenAI)
+        window.process = { env: { API_KEY: '' } }; 
         window.Buffer = {
             from: (str, encoding) => {
                 if (encoding === 'base64') {
@@ -101,12 +101,6 @@
                 }
                 return new TextEncoder().encode(str);
             }
-        };
-        
-        // Error Handler
-        window.onerror = function(msg, url, line, col, error) {
-           console.error("App Error:", msg, line);
-           // document.body.innerHTML += `<div style="color:red;padding:20px;">ERROR: ${msg}</div>`;
         };
     </script>
 
