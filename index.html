@@ -14,10 +14,7 @@
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- SortableJS (for future drag & drop features) -->
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-    
-    <!-- Babel Standalone (Compiles TSX in browser) -->
+    <!-- Babel Standalone -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -47,26 +44,12 @@
       }
 
       /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #d1d5db; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #9ca3af; 
-      }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-      /* Typography overrides */
-      h1, h2, h3, h4 {
-        font-weight: var(--font-weight-medium);
-        letter-spacing: var(--letter-spacing-normal);
-      }
+      h1, h2, h3, h4 { font-weight: var(--font-weight-medium); letter-spacing: var(--letter-spacing-normal); }
 
       .btn-primary {
         background: var(--gradient-gold);
@@ -74,16 +57,8 @@
         box-shadow: var(--shadow-gold);
         transition: all 0.2s ease;
       }
-      .btn-primary:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 10px 20px rgba(192,174,102,0.3);
-      }
-      .btn-primary:disabled {
-        background: var(--any-ever-stone-grey);
-        box-shadow: none;
-        transform: none;
-        cursor: not-allowed;
-      }
+      .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 20px rgba(192,174,102,0.3); }
+      .btn-primary:disabled { background: var(--any-ever-stone-grey); box-shadow: none; transform: none; cursor: not-allowed; }
 
       .card {
         background: var(--any-ever-white);
@@ -91,22 +66,12 @@
         border-radius: 16px;
         box-shadow: 0 4px 18px rgba(0,0,0,0.04);
       }
-
-      input[type="text"], input[type="email"], textarea, select {
-        background: var(--any-ever-bright-grey);
-        border: 1px solid rgba(0,0,0,0.08);
-        color: var(--any-ever-black);
-      }
-      input:focus, textarea:focus, select:focus {
-        border-color: var(--any-ever-gold) !important;
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(192,174,102,0.1);
-      }
       
       .animate-fade-in { animation: fadeIn 0.5s ease-in-out; }
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 
+    <!-- Import Map for External Modules -->
     <script type="importmap">
 {
   "imports": {
@@ -123,13 +88,11 @@
   <body>
     <div id="root"></div>
     
-    <!-- Polyfills for Browser Compatibility -->
     <script>
-        // Process Polyfill
+        // Polyfills for Browser Compatibility with GenAI SDK
         if (typeof process === 'undefined') {
-            window.process = { env: { API_KEY: '' } };
+            window.process = { env: { API_KEY: '' } }; // API Key injected via environment or handled in code
         }
-        // Buffer Polyfill
         if (typeof Buffer === 'undefined') {
             window.Buffer = {
                 from: (str, encoding) => {
@@ -145,8 +108,7 @@
         }
     </script>
 
-    <!-- Main Application Entry -->
-    <!-- Important: type="text/babel" allows Babel Standalone to compile this on the fly -->
-    <script type="text/babel" data-type="module" data-presets="react,typescript" src="./index.tsx"></script>
+    <!-- Main Application Entry - Loaded as Module for Babel -->
+    <script type="text/babel" data-type="module" src="./index.tsx"></script>
   </body>
 </html>

@@ -7,7 +7,9 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
-// --- TYPES ---
+// ==========================================
+// 1. TYPES
+// ==========================================
 
 enum VoiceName {
   Puck = 'Puck',
@@ -37,125 +39,11 @@ interface StoredAudioFile {
 
 type MusicSlotIndex = -1 | 0 | 1 | 2;
 
+// ==========================================
+// 2. UTILS (Audio, RSS, Storage)
+// ==========================================
 
-// --- UTILS: RSS ---
-
-const fetchFeedContent = async (url: string): Promise<string | null> => {
-  const cleanUrl = url.trim();
-  const encodedUrl = encodeURIComponent(cleanUrl);
-
-  try {
-    const response = await fetch(`https://api.allorigins.win/get?url=${encodedUrl}`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.contents) return data.contents;
-    }
-  } catch (e) {
-    console.warn(`AllOrigins proxy failed for ${cleanUrl}`, e);
-  }
-
-  try {
-    const response = await fetch(`https://corsproxy.io/?${encodedUrl}`);
-    if (response.ok) {
-      return await response.text();
-    }
-  } catch (e) {
-    console.warn(`CorsProxy failed for ${cleanUrl}`, e);
-  }
-
-  return null;
-};
-
-const fetchRssFeeds = async (urls: string[]): Promise<{ combinedContent: string, articles: RssArticle[] }> => {
-  if (urls.length === 0) return { combinedContent: "", articles: [] };
-
-  let combinedContent = "RSS FEED QUELLEMATERIAL (STRICT USE ONLY):\n";
-  const allArticles: RssArticle[] = [];
-  const validUrls = urls.filter(u => u.trim().length > 0);
-
-  for (const url of validUrls) {
-    try {
-      const xmlString = await fetchFeedContent(url);
-      if (!xmlString) {
-        combinedContent += `\n(Fehler beim Laden des Feeds: ${url})\n`;
-        continue;
-      }
-
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-
-      if (xmlDoc.querySelector("parsererror")) {
-        combinedContent += `\n(Fehler beim Lesen des XML-Formats für: ${url})\n`;
-        continue;
-      }
-
-      let channelTitle = "Unbekannte Quelle";
-      const titleNode = xmlDoc.querySelector("channel > title") || xmlDoc.querySelector("feed > title");
-      if (titleNode && titleNode.textContent) {
-        channelTitle = titleNode.textContent.trim();
-      }
-
-      const items = Array.from(xmlDoc.querySelectorAll("item, entry"));
-      const topItems = items.slice(0, 5);
-
-      combinedContent += `\n=== QUELLE: ${channelTitle} ===\n`;
-
-      topItems.forEach(item => {
-        const title = item.querySelector("title")?.textContent?.trim() || "Ohne Titel";
-        const contentEncoded = item.getElementsByTagName("content:encoded")[0]?.textContent;
-        const description = item.querySelector("description")?.textContent;
-        const summary = item.querySelector("summary")?.textContent;
-        const content = item.querySelector("content")?.textContent;
-        
-        let fullText = contentEncoded || content || description || summary || "";
-        fullText = fullText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
-        
-        let link = "";
-        const atomLinks = item.getElementsByTagName("link");
-        if (atomLinks.length > 0) {
-            for (let i = 0; i < atomLinks.length; i++) {
-                const href = atomLinks[i].getAttribute("href");
-                if (href) { link = href; break; }
-                if (atomLinks[i].textContent && atomLinks[i].textContent?.startsWith('http')) {
-                    link = atomLinks[i].textContent?.trim() || "";
-                    break;
-                }
-            }
-        }
-        if (!link) {
-             const directLink = item.querySelector("link")?.textContent?.trim();
-             if (directLink && directLink.startsWith('http')) link = directLink;
-        }
-        if (!link) {
-            const idNode = item.querySelector("guid, id");
-            const idText = idNode?.textContent?.trim();
-            if (idText && (idText.startsWith("http") || idText.startsWith("https"))) link = idText;
-        }
-
-        const articleObj: RssArticle = {
-          title,
-          description: fullText.substring(0, 300), 
-          link: link || "Link nicht gefunden",
-          source: channelTitle
-        };
-        allArticles.push(articleObj);
-        
-        combinedContent += `\n- ARTIKEL: "${title}"\n  QUELLE: ${channelTitle}\n  LINK: ${link}\n`; 
-        if (fullText) {
-           const analysisText = fullText.length > 2500 ? fullText.substring(0, 2500) + "..." : fullText;
-           combinedContent += `  INHALT: ${analysisText}\n`;
-        }
-      });
-
-    } catch (error) {
-      console.error(`Failed to process RSS feed: ${url}`, error);
-    }
-  }
-  return { combinedContent, articles: allArticles };
-};
-
-
-// --- UTILS: AUDIO ---
+// --- Audio Encoding/Decoding ---
 
 const decodeBase64Audio = async (base64String: string, ctx: AudioContext): Promise<AudioBuffer> => {
   const binaryString = atob(base64String);
@@ -163,6 +51,7 @@ const decodeBase64Audio = async (base64String: string, ctx: AudioContext): Promi
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
   
+  // Byte alignment fix
   let bufferToUse = bytes.buffer;
   if (bytes.byteLength % 2 !== 0) bufferToUse = bytes.buffer.slice(0, bytes.byteLength - 1);
   
@@ -175,7 +64,6 @@ const decodeBase64Audio = async (base64String: string, ctx: AudioContext): Promi
   const channelData = buffer.getChannelData(0);
   
   for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i] / 32768.0;
-  
   return buffer;
 };
 
@@ -232,20 +120,13 @@ const audioBufferToWav = (buffer: AudioBuffer): Blob => {
   const view = new DataView(bufferArr);
   const channels = [];
   let i, sample, offset = 0, pos = 0;
+  const setUint16 = (data: number) => { view.setUint16(pos, data, true); pos += 2; };
+  const setUint32 = (data: number) => { view.setUint32(pos, data, true); pos += 4; };
 
-  setUint32(0x46464952); 
-  setUint32(length - 8); 
-  setUint32(0x45564157); 
-  setUint32(0x20746d66); 
-  setUint32(16); 
-  setUint16(1); 
-  setUint16(numOfChan);
-  setUint32(buffer.sampleRate);
-  setUint32(buffer.sampleRate * 2 * numOfChan); 
-  setUint16(numOfChan * 2); 
-  setUint16(16); 
-  setUint32(0x61746164); 
-  setUint32(length - pos - 4); 
+  setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
+  setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+  setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan); 
+  setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4); 
 
   for (i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
 
@@ -259,16 +140,12 @@ const audioBufferToWav = (buffer: AudioBuffer): Blob => {
     pos++;
   }
   return new Blob([bufferArr], { type: "audio/wav" });
-
-  function setUint16(data: number) { view.setUint16(pos, data, true); pos += 2; }
-  function setUint32(data: number) { view.setUint32(pos, data, true); pos += 4; }
 };
 
 const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
   // @ts-ignore
   const lamejs = window.lamejs;
   if (!lamejs) throw new Error("Lamejs library not found.");
-
   const channels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const kbps = 320; 
@@ -296,7 +173,6 @@ const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
   }
   const mp3buf = mp3encoder.flush();
   if (mp3buf.length > 0) mp3Data.push(mp3buf);
-
   return new Blob(mp3Data, { type: 'audio/mp3' });
 };
 
@@ -314,7 +190,7 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-// IndexedDB Persistence
+// --- IndexedDB Persistence ---
 const DB_NAME = 'GeminiPodcastStudioDB';
 const STORE_NAME = 'audioFiles';
 const DB_VERSION = 1;
@@ -334,7 +210,7 @@ const storeAudioFile = async (key: string, file: File): Promise<void> => {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const req = store.put({ name: file.name, blob: file }, key);
+    store.put({ name: file.name, blob: file }, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -356,14 +232,117 @@ const deleteAudioFile = async (key: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const req = store.delete(key);
+    store.delete(key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 };
 
+// --- RSS Utils ---
 
-// --- SERVICES: GEMINI ---
+const fetchFeedContent = async (url: string): Promise<string | null> => {
+  const cleanUrl = url.trim();
+  const encodedUrl = encodeURIComponent(cleanUrl);
+  try {
+    const response = await fetch(`https://api.allorigins.win/get?url=${encodedUrl}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.contents) return data.contents;
+    }
+  } catch (e) { console.warn(`AllOrigins proxy failed for ${cleanUrl}`, e); }
+  try {
+    const response = await fetch(`https://corsproxy.io/?${encodedUrl}`);
+    if (response.ok) return await response.text();
+  } catch (e) { console.warn(`CorsProxy failed for ${cleanUrl}`, e); }
+  return null;
+};
+
+const fetchRssFeeds = async (urls: string[]): Promise<{ combinedContent: string, articles: RssArticle[] }> => {
+  if (urls.length === 0) return { combinedContent: "", articles: [] };
+  let combinedContent = "RSS FEED QUELLEMATERIAL (STRICT USE ONLY):\n";
+  const allArticles: RssArticle[] = [];
+  const validUrls = urls.filter(u => u.trim().length > 0);
+
+  for (const url of validUrls) {
+    try {
+      const xmlString = await fetchFeedContent(url);
+      if (!xmlString) {
+        combinedContent += `\n(Fehler beim Laden des Feeds: ${url})\n`;
+        continue;
+      }
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+      if (xmlDoc.querySelector("parsererror")) {
+        combinedContent += `\n(Fehler beim Lesen des XML-Formats für: ${url})\n`;
+        continue;
+      }
+      let channelTitle = "Unbekannte Quelle";
+      const titleNode = xmlDoc.querySelector("channel > title") || xmlDoc.querySelector("feed > title");
+      if (titleNode && titleNode.textContent) channelTitle = titleNode.textContent.trim();
+
+      const items = Array.from(xmlDoc.querySelectorAll("item, entry")).slice(0, 5);
+      combinedContent += `\n=== QUELLE: ${channelTitle} ===\n`;
+
+      items.forEach(item => {
+        const title = item.querySelector("title")?.textContent?.trim() || "Ohne Titel";
+        const contentEncoded = item.getElementsByTagName("content:encoded")[0]?.textContent;
+        const description = item.querySelector("description")?.textContent;
+        const summary = item.querySelector("summary")?.textContent;
+        const content = item.querySelector("content")?.textContent;
+        
+        let fullText = contentEncoded || content || description || summary || "";
+        fullText = fullText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+        
+        let link = "";
+        const atomLinks = item.getElementsByTagName("link");
+        if (atomLinks.length > 0) {
+            for (let i = 0; i < atomLinks.length; i++) {
+                const href = atomLinks[i].getAttribute("href");
+                if (href) { link = href; break; }
+                if (atomLinks[i].textContent && atomLinks[i].textContent?.startsWith('http')) {
+                    link = atomLinks[i].textContent?.trim() || "";
+                    break;
+                }
+            }
+        }
+        if (!link) {
+             const directLink = item.querySelector("link")?.textContent?.trim();
+             if (directLink && directLink.startsWith('http')) link = directLink;
+        }
+        if (!link) {
+            const idNode = item.querySelector("guid, id");
+            const idText = idNode?.textContent?.trim();
+            if (idText && (idText.startsWith("http") || idText.startsWith("https"))) link = idText;
+        }
+        // Regex Fallback
+        if (!link) {
+            const html = item.innerHTML;
+            const urlMatch = html.match(/<link>(https?:\/\/[^<]+)<\/link>/i);
+            if (urlMatch && urlMatch[1]) link = urlMatch[1];
+        }
+
+        const articleObj: RssArticle = {
+          title,
+          description: fullText.substring(0, 300), 
+          link: link || "Link nicht gefunden",
+          source: channelTitle
+        };
+        allArticles.push(articleObj);
+        
+        combinedContent += `\n- ARTIKEL: "${title}"\n  QUELLE: ${channelTitle}\n  LINK: ${link}\n`; 
+        if (fullText) {
+           const analysisText = fullText.length > 2500 ? fullText.substring(0, 2500) + "..." : fullText;
+           combinedContent += `  INHALT: ${analysisText}\n`;
+        }
+      });
+    } catch (error) { console.error(`Failed to process RSS feed: ${url}`, error); }
+  }
+  return { combinedContent, articles: allArticles };
+};
+
+// ==========================================
+// 3. SERVICES (Gemini)
+// ==========================================
 
 const API_KEY = process.env.API_KEY;
 const ai = new GoogleGenAI({ apiKey: API_KEY || '' });
@@ -475,8 +454,9 @@ const generatePodcastAudio = async (script: string, hostName: string, guestName:
   return parts[0].inlineData.data;
 };
 
-
-// --- COMPONENTS ---
+// ==========================================
+// 4. COMPONENTS
+// ==========================================
 
 const ScriptSection: React.FC<{
   onScriptReady: (script: string) => void;
@@ -607,7 +587,7 @@ const ScriptSection: React.FC<{
           <div className="pt-8 border-t border-[rgba(0,0,0,0.05)]">
             <textarea value={currentScript} onChange={(e) => {setCurrentScript(e.target.value); onScriptReady(e.target.value);}} rows={12} className="w-full bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-6 font-mono text-sm shadow-inner" />
             {localRssArticles.length > 0 && (
-              <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl">
+              <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl border border-[rgba(0,0,0,0.05)]">
                 <h4 className="text-xs font-bold text-[#c0ae66] uppercase mb-4 border-b border-[#c0ae66] pb-2 inline-block">Verwendete RSS-Quellen</h4>
                 <ul className="space-y-3">{localRssArticles.map((a, i) => (
                     <li key={i} className="flex flex-col gap-1 text-sm">
@@ -618,7 +598,7 @@ const ScriptSection: React.FC<{
               </div>
             )}
             {sources.length > 0 && (
-              <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl">
+              <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl border border-[rgba(0,0,0,0.05)]">
                 <h4 className="text-xs font-bold text-[#c0ae66] uppercase mb-4 border-b border-[#c0ae66] pb-2 inline-block">Google Search Quellen</h4>
                 <ul className="space-y-2">{sources.map((s, i) => <li key={i} className="flex gap-2 text-sm"><Globe className="w-4 h-4 text-[#c0ae66]"/><a href={s.uri} target="_blank" className="hover:text-[#c0ae66] hover:underline truncate">{s.title || s.uri}</a></li>)}</ul>
               </div>
@@ -654,6 +634,7 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
   const [emailBody, setEmailBody] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSentSuccess, setEmailSentSuccess] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle'|'saved'>('idle');
 
   useEffect(() => {
     getAudioFile('intro').then(setIntroFile);
@@ -667,6 +648,16 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
   useEffect(() => { localStorage.setItem('musicVolume', musicVolume.toString()); }, [musicVolume]);
   useEffect(() => { localStorage.setItem('introVolume', introVolume.toString()); }, [introVolume]);
   useEffect(() => { localStorage.setItem('outroVolume', outroVolume.toString()); }, [outroVolume]);
+
+  const handleManualSave = () => {
+    localStorage.setItem('hostVoice', hostVoice);
+    localStorage.setItem('guestVoice', guestVoice);
+    localStorage.setItem('selectedMusicIndex', selectedMusicIndex.toString());
+    localStorage.setItem('musicVolume', musicVolume.toString());
+    localStorage.setItem('introVolume', introVolume.toString());
+    localStorage.setItem('outroVolume', outroVolume.toString());
+    setSaveStatus('saved'); setTimeout(()=>setSaveStatus('idle'), 2000);
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'intro' | 'outro' | 'music', index?: number) => {
     if (e.target.files?.[0]) {
@@ -765,7 +756,7 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
     <div className={`card p-8 transition-all hover:shadow-xl ${!script ? 'opacity-50 pointer-events-none' : ''}`}>
        <div className="border-b border-[#c0ae66] pb-4 mb-8 flex justify-between">
           <h2 className="text-xl font-medium flex items-center gap-2"><Volume2 className="w-5 h-5 text-[#c0ae66]"/> SCHRITT 2: AUDIO ERSTELLEN</h2>
-          <button onClick={() => window.location.reload()} className="text-xs bg-[#f9f9f9] px-3 py-1 rounded-full border"><Save className="w-3 h-3 inline"/> Config Saved</button>
+          <button onClick={handleManualSave} className="flex items-center gap-2 px-4 py-2 rounded-full border bg-[#f9f9f9] text-xs">{saveStatus==='saved'?<><CheckCircle2 className="w-3 h-3 text-green-500"/>Gespeichert</>:<><Save className="w-3 h-3"/>Speichern</>}</button>
        </div>
        <div className="space-y-10">
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -840,6 +831,10 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
   );
 };
 
+// ==========================================
+// 5. APP LAYOUT
+// ==========================================
+
 const App: React.FC = () => {
   const [script, setScript] = useState(() => localStorage.getItem('podcastScript') || '');
   const [topic, setTopic] = useState(() => localStorage.getItem('podcastTopic') || '');
@@ -855,6 +850,10 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('rssArticles', JSON.stringify(rssArticles)); }, [rssArticles]);
   useEffect(() => { localStorage.setItem('searchSources', JSON.stringify(searchSources)); }, [searchSources]);
 
+  const handleScriptReady = (newScript: string) => {
+    setScript(newScript);
+  };
+
   return (
     <div className="container mx-auto max-w-[1200px] bg-white rounded-[16px] min-h-[calc(100vh-48px)] overflow-hidden shadow-sm border border-[rgba(0,0,0,0.05)]">
       <div className="relative bg-white px-10 py-16 text-center border-b-2 border-[#c0ae66] rounded-t-[16px] overflow-hidden">
@@ -868,7 +867,7 @@ const App: React.FC = () => {
       </div>
       <div className="grid grid-cols-1 gap-8 p-8 lg:p-12 bg-[#f9f9f9]">
         <div className="flex flex-col gap-8">
-          <ScriptSection onScriptReady={setScript} hostName={hostName} setHostName={setHostName} guestName={guestName} setGuestName={setGuestName} topic={topic} setTopic={setTopic} setRssArticles={setRssArticles} setSearchSources={setSearchSources} />
+          <ScriptSection onScriptReady={handleScriptReady} hostName={hostName} setHostName={setHostName} guestName={guestName} setGuestName={setGuestName} topic={topic} setTopic={setTopic} setRssArticles={setRssArticles} setSearchSources={setSearchSources} />
           <AudioSection script={script} hostName={hostName} guestName={guestName} topic={topic} rssArticles={rssArticles} searchSources={searchSources} />
         </div>
       </div>
