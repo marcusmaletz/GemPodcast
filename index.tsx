@@ -1,3 +1,15 @@
-// CODE MOVED TO index.html
-// Please use the index.html file for the application.
-// This file can be deleted to avoid confusion.
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
