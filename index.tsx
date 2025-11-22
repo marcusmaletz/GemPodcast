@@ -8,8 +8,10 @@ import {
 import { GoogleGenAI, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
 
 // ==========================================
-// 1. TYPES
+// 1. TYPES & CONFIG
 // ==========================================
+
+const N8N_WEBHOOK_URL = 'https://anymal.app.n8n.cloud/webhook/send_mail';
 
 enum VoiceName {
   Puck = 'Puck',
@@ -51,7 +53,6 @@ const decodeBase64Audio = async (base64String: string, ctx: AudioContext): Promi
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
   
-  // Byte alignment fix
   let bufferToUse = bytes.buffer;
   if (bytes.byteLength % 2 !== 0) bufferToUse = bytes.buffer.slice(0, bytes.byteLength - 1);
   
@@ -113,35 +114,6 @@ const mixPodcastSequence = async (
   return await offlineCtx.startRendering();
 };
 
-const audioBufferToWav = (buffer: AudioBuffer): Blob => {
-  const numOfChan = buffer.numberOfChannels;
-  const length = buffer.length * numOfChan * 2 + 44;
-  const bufferArr = new ArrayBuffer(length);
-  const view = new DataView(bufferArr);
-  const channels = [];
-  let i, sample, offset = 0, pos = 0;
-  const setUint16 = (data: number) => { view.setUint16(pos, data, true); pos += 2; };
-  const setUint32 = (data: number) => { view.setUint32(pos, data, true); pos += 4; };
-
-  setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
-  setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-  setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan); 
-  setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4); 
-
-  for (i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
-
-  while (pos < buffer.length) {
-    for (i = 0; i < numOfChan; i++) {
-      sample = Math.max(-1, Math.min(1, channels[i][pos])); 
-      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; 
-      view.setInt16(44 + offset, sample, true); 
-      offset += 2;
-    }
-    pos++;
-  }
-  return new Blob([bufferArr], { type: "audio/wav" });
-};
-
 const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
   // @ts-ignore
   const lamejs = window.lamejs;
@@ -174,6 +146,35 @@ const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
   const mp3buf = mp3encoder.flush();
   if (mp3buf.length > 0) mp3Data.push(mp3buf);
   return new Blob(mp3Data, { type: 'audio/mp3' });
+};
+
+const audioBufferToWav = (buffer: AudioBuffer): Blob => {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2 + 44;
+  const bufferArr = new ArrayBuffer(length);
+  const view = new DataView(bufferArr);
+  const channels = [];
+  let i, sample, offset = 0, pos = 0;
+  const setUint16 = (data: number) => { view.setUint16(pos, data, true); pos += 2; };
+  const setUint32 = (data: number) => { view.setUint32(pos, data, true); pos += 4; };
+
+  setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
+  setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+  setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan); 
+  setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4); 
+
+  for (i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+  while (pos < buffer.length) {
+    for (i = 0; i < numOfChan; i++) {
+      sample = Math.max(-1, Math.min(1, channels[i][pos])); 
+      sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; 
+      view.setInt16(44 + offset, sample, true); 
+      offset += 2;
+    }
+    pos++;
+  }
+  return new Blob([bufferArr], { type: "audio/wav" });
 };
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -314,7 +315,6 @@ const fetchRssFeeds = async (urls: string[]): Promise<{ combinedContent: string,
             const idText = idNode?.textContent?.trim();
             if (idText && (idText.startsWith("http") || idText.startsWith("https"))) link = idText;
         }
-        // Regex Fallback
         if (!link) {
             const html = item.innerHTML;
             const urlMatch = html.match(/<link>(https?:\/\/[^<]+)<\/link>/i);
@@ -355,8 +355,9 @@ const generateScript = async (
   rssContent: string = "",
   customSystemInstruction?: string
 ): Promise<GeneratedScriptResponse> => {
-  const modelId = "gemini-2.5-flash";
-  const defaultSystemInstruction = `Du bist ein professioneller, investigativer Podcast-Produzent.
+  try {
+    const modelId = "gemini-2.5-flash";
+    const defaultSystemInstruction = `Du bist ein professioneller, investigativer Podcast-Produzent.
 Deine Aufgabe ist es, einen tiefgründigen, spannenden Podcast-Dialog basierend auf dem Thema und den bereitgestellten Quellen zu schreiben.
 WICHTIGE REGELN FÜR DEN INHALT:
 1. **SPRACHE**: Der gesamte Dialog muss zwingend auf DEUTSCH verfasst sein.
@@ -366,48 +367,50 @@ WICHTIGE REGELN FÜR DEN INHALT:
 Formatierung:
 1. Das Skript muss ein Dialog sein.
 2. Nutze exakt die vorgegebenen Sprechernamen als Präfix (z.B. "${hostName}:", "${guestName}:").
-3. Länge: ca. 400-600 Wörter.`;
+3. Länge: ca. 400-600 Wörter.
+4. Starte sofort mit dem Dialog.`;
 
-  const systemInstruction = customSystemInstruction || defaultSystemInstruction;
-  let userPrompt = `Thema: "${topic}"\nSprecher 1 (Host): "${hostName}"\nSprecher 2 (Gast): "${guestName}"\n`;
+    const systemInstruction = customSystemInstruction || defaultSystemInstruction;
+    let userPrompt = `Thema: "${topic}"\nSprecher 1 (Host): "${hostName}"\nSprecher 2 (Gast): "${guestName}"\n`;
 
-  if (rssContent) {
-    userPrompt += `\nACHTUNG: RSS-MODUS AKTIV. NUTZE NUR DIE FOLGENDEN QUELLEN:\n==================================================\n${rssContent}\n==================================================\n`;
-    userPrompt += `\nSCHRITT 1: REDAKTIONELLE PRÜFUNG & KURATIERUNG:\n1. **DEDUPLIZIERUNG**: Fasse gleiche Events zusammen.\n2. **RELEVANZ-FILTER**: Ignoriere Bugfixes und Werbung. Wähle nur Top 3-4 Themen.\n`;
-    userPrompt += `\nSCHRITT 2: SCHREIBEN:\n1. Nutze AUSSCHLIESSLICH die RSS-Inhalte. KEIN externes Wissen.\n2. ZITIERPFLICHT: Nenne die Quelle verbal (z.B. "Laut Heise Online...").\n`;
-  }
-  userPrompt += `\n\nGeneriere jetzt das Skript basierend auf deiner redaktionellen Auswahl. WICHTIG: Schreibe den Dialog komplett auf DEUTSCH.`;
+    if (rssContent) {
+      userPrompt += `\nACHTUNG: RSS-MODUS AKTIV. NUTZE NUR DIE FOLGENDEN QUELLEN:\n==================================================\n${rssContent}\n==================================================\n`;
+      userPrompt += `\nSCHRITT 1: REDAKTIONELLE PRÜFUNG & KURATIERUNG:\n1. **DEDUPLIZIERUNG**: Fasse gleiche Events zusammen.\n2. **RELEVANZ-FILTER**: Ignoriere Bugfixes und Werbung. Wähle nur Top 3-4 Themen.\n`;
+      userPrompt += `\nSCHRITT 2: SCHREIBEN:\n1. Nutze AUSSCHLIESSLICH die RSS-Inhalte. KEIN externes Wissen.\n2. ZITIERPFLICHT: Nenne die Quelle verbal (z.B. "Laut Heise Online...").\n`;
+    }
+    userPrompt += `\n\nGeneriere jetzt das Skript basierend auf deiner redaktionellen Auswahl. WICHTIG: Schreibe den Dialog komplett auf DEUTSCH.`;
 
-  const config: any = {
-    temperature: 0.3,
-    systemInstruction: systemInstruction,
-  };
-  if (useSearch) {
-    config.tools = [{ googleSearch: {} }];
-  }
+    const config: any = {
+      temperature: 0.3,
+      systemInstruction: systemInstruction,
+    };
+    if (useSearch) {
+      config.tools = [{ googleSearch: {} }];
+    }
 
-  const response = await ai.models.generateContent({
-    model: modelId,
-    contents: userPrompt,
-    config: config
-  });
-
-  const text = response.text || "";
-  let searchSources: { title: string; uri: string }[] = [];
-  const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-  if (chunks) {
-    chunks.forEach((chunk: any) => {
-      if (chunk.web) searchSources.push({ title: chunk.web.title, uri: chunk.web.uri });
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: userPrompt,
+      config: config
     });
-  }
 
-  const dateStr = new Date().toLocaleDateString('de-DE');
-  const shortTopic = topic.length > 30 ? topic.substring(0, 27) + "..." : topic;
-  return {
-    title: `AI-Podcast: ${shortTopic} - ${dateStr}`,
-    script: text,
-    searchSources
-  };
+    const text = response.text || "";
+    let searchSources: { title: string; uri: string }[] = [];
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (chunks) {
+      chunks.forEach((chunk: any) => {
+        if (chunk.web) searchSources.push({ title: chunk.web.title, uri: chunk.web.uri });
+      });
+    }
+
+    const dateStr = new Date().toLocaleDateString('de-DE');
+    const shortTopic = topic.length > 30 ? topic.substring(0, 27) + "..." : topic;
+    return {
+      title: `AI-Podcast: ${shortTopic} - ${dateStr}`,
+      script: text,
+      searchSources
+    };
+  } catch (e) { console.error(e); throw e; }
 };
 
 const generateVoicePreview = async (voice: VoiceName, text: string): Promise<string> => {
@@ -532,16 +535,16 @@ const ScriptSection: React.FC<{
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            <div>
             <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2">Name Sprecher 1</label>
-            <input type="text" value={hostName} onChange={(e) => setHostName(e.target.value)} className="w-full rounded-xl py-3 px-4" />
+            <input type="text" value={hostName} onChange={(e) => setHostName(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200" />
            </div>
            <div>
             <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2">Name Sprecher 2</label>
-            <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} className="w-full rounded-xl py-3 px-4" />
+            <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200" />
            </div>
         </div>
         <div>
             <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2">Podcast Thema</label>
-            <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} className="w-full rounded-xl py-3 px-4" />
+            <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="flex items-center gap-3 p-4 rounded-2xl bg-[#f9f9f9] border border-dashed border-[#d1d5db] cursor-pointer">
@@ -556,7 +559,7 @@ const ScriptSection: React.FC<{
         {useRss && showRssInput && (
             <div className="bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-6 shadow-sm space-y-4">
               <div className="flex gap-2">
-                <input type="text" value={newRssInput} onChange={(e) => setNewRssInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddRssFeed()} placeholder="Feed URL..." className="flex-1 rounded-full px-4 py-2 text-sm" />
+                <input type="text" value={newRssInput} onChange={(e) => setNewRssInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddRssFeed()} placeholder="Feed URL..." className="flex-1 rounded-full px-4 py-2 text-sm border border-gray-200" />
                 <button onClick={handleAddRssFeed} className="btn-primary w-10 h-10 rounded-full flex items-center justify-center"><Plus className="w-5 h-5" /></button>
               </div>
               <ul className="space-y-2 max-h-40 overflow-y-auto">
@@ -577,7 +580,7 @@ const ScriptSection: React.FC<{
         {showSettings && (
             <div className="bg-[#f9f9f9] border border-[rgba(0,0,0,0.05)] rounded-2xl p-6">
                 <div className="flex justify-between mb-2"><label className="text-xs font-bold uppercase">System Prompt</label><button onClick={() => setSystemInstruction("")} className="text-xs text-[#c0ae66]"><RotateCcw className="w-3 h-3 inline"/> Reset</button></div>
-                <textarea value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} rows={6} className="w-full rounded-xl p-3 text-xs font-mono" />
+                <textarea value={systemInstruction} onChange={(e) => setSystemInstruction(e.target.value)} rows={6} className="w-full rounded-xl p-3 text-xs font-mono border border-gray-200" />
             </div>
         )}
         <button onClick={handleGenerate} disabled={loading || !topic} className="btn-primary w-full flex items-center justify-center gap-2 px-8 py-4 rounded-full font-bold uppercase text-sm">
@@ -743,10 +746,9 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
     try {
         const b64 = await blobToBase64(audioBlob);
         const payload = { to: emailTo, subject: emailSubject, body: emailBody, attachmentName: "podcast.mp3", attachmentBase64: b64 };
-        const url = 'https://anymal.app.n8n.cloud/webhook/send_mail';
         let res;
-        try { res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }); }
-        catch { res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }); }
+        try { res = await fetch(N8N_WEBHOOK_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }); }
+        catch { res = await fetch(`https://corsproxy.io/?${encodeURIComponent(N8N_WEBHOOK_URL)}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }); }
         if (!res.ok) throw new Error("Send failed");
         setEmailSentSuccess(true); setTimeout(() => setShowEmailModal(false), 2000);
     } catch (e) { alert("Mail fail (Size limit?)"); } finally { setIsSendingEmail(false); }
@@ -764,8 +766,8 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
                 <div key={i} className="bg-[#f9f9f9] p-4 rounded-2xl border">
                     <label className="text-xs font-medium text-[#717684] uppercase mb-2 block">{i===0?hostName:guestName}</label>
                     <div className="flex gap-3">
-                        <select value={voice} onChange={(e) => i===0?setHostVoice(e.target.value as VoiceName):setGuestVoice(e.target.value as VoiceName)} className="w-full rounded-xl px-4 py-3">{Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}</select>
-                        <button onClick={() => handleVoicePreview(voice, i===0?'host':'guest')} className="w-12 bg-white rounded-xl flex items-center justify-center border">{previewLoading===(i===0?'host':'guest')?<Loader2 className="animate-spin w-4 h-4"/>:<Play className="w-4 h-4"/>}</button>
+                        <select value={voice} onChange={(e) => i===0?setHostVoice(e.target.value as VoiceName):setGuestVoice(e.target.value as VoiceName)} className="w-full rounded-xl px-4 py-3 border border-gray-200">{Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}</select>
+                        <button onClick={() => handleVoicePreview(voice, i===0?'host':'guest')} className="w-12 bg-white rounded-xl flex items-center justify-center border border-gray-200">{previewLoading===(i===0?'host':'guest')?<Loader2 className="animate-spin w-4 h-4"/>:<Play className="w-4 h-4"/>}</button>
                     </div>
                 </div>
             ))}
@@ -816,9 +818,9 @@ const AudioSection: React.FC<{ script: string, hostName: string, guestName: stri
                <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
                    <div className="p-6 border-b flex justify-between items-center"><h3 className="font-medium flex gap-2"><Mail className="text-[#c0ae66]"/> Senden</h3><button onClick={()=>setShowEmailModal(false)}><X/></button></div>
                    <div className="p-8 space-y-4 overflow-y-auto">
-                       <input type="email" value={emailTo} onChange={(e)=>setEmailTo(e.target.value)} placeholder="Empfänger" className="w-full rounded-xl py-3 px-4"/>
-                       <input type="text" value={emailSubject} onChange={(e)=>setEmailSubject(e.target.value)} placeholder="Betreff" className="w-full rounded-xl py-3 px-4"/>
-                       <textarea value={emailBody} onChange={(e)=>setEmailBody(e.target.value)} rows={8} className="w-full rounded-xl py-3 px-4 font-mono text-sm"/>
+                       <input type="email" value={emailTo} onChange={(e)=>setEmailTo(e.target.value)} placeholder="Empfänger" className="w-full rounded-xl py-3 px-4 border border-gray-200"/>
+                       <input type="text" value={emailSubject} onChange={(e)=>setEmailSubject(e.target.value)} placeholder="Betreff" className="w-full rounded-xl py-3 px-4 border border-gray-200"/>
+                       <textarea value={emailBody} onChange={(e)=>setEmailBody(e.target.value)} rows={8} className="w-full rounded-xl py-3 px-4 font-mono text-sm border border-gray-200"/>
                    </div>
                    <div className="p-6 border-t flex justify-end gap-3">
                        <button onClick={()=>setShowEmailModal(false)} className="px-4">Abbrechen</button>
