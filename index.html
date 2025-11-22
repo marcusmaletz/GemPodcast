@@ -14,7 +14,7 @@
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Babel Standalone -->
+    <!-- Babel Standalone with TS support -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -120,7 +120,7 @@
     </script>
 
     <!-- MONOLITHIC APP CODE INLINED -->
-    <script type="text/babel" data-type="module">
+    <script type="text/babel" data-type="module" data-presets="react,typescript">
       import React, { useState, useEffect, useRef } from 'react';
       import ReactDOM from 'react-dom/client';
       import { 
