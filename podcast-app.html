@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ANY EVER | Podcast Studio (Audio Fixed)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.292.0"
+      }
+    }
+    </script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      :root {
+        --any-ever-gold: #c0ae66;
+        --any-ever-black: #181818;
+        --any-ever-bright-grey: #f9f9f9;
+        --shadow-gold: 0 8px 18px rgba(192,174,102,0.24);
+        --gradient-gold: linear-gradient(135deg, #d4c585 0%, #c0ae66 100%);
+      }
+      body { font-family: 'Inter', sans-serif; background-color: var(--any-ever-bright-grey); color: var(--any-ever-black); padding: 24px; margin: 0; }
+      
+      .btn-primary { 
+        background-color: #c0ae66;
+        background: var(--gradient-gold); 
+        color: white; 
+        box-shadow: var(--shadow-gold); 
+        transition: all 0.2s ease; 
+      }
+      .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 20px rgba(192,174,102,0.3); }
+      .btn-primary:disabled { background: #e5e5e5; box-shadow: none; transform: none; cursor: not-allowed; }
+      
+      .card { background: white; border: 1px solid rgba(0,0,0,0.05); border-radius: 16px; box-shadow: 0 4px 18px rgba(0,0,0,0.04); }
+      
+      input:focus, textarea:focus, select:focus { border-color: var(--any-ever-gold) !important; outline: none; box-shadow: 0 0 0 3px rgba(192,174,102,0.1); }
+      input[type=range] { accent-color: var(--any-ever-gold); }
+      
+      .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect } from 'react';
+        import ReactDOM from 'react-dom/client';
+        import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc, Mail, X, Send, FileAudio, CheckCircle2, Save, Sparkles, Globe, Users, Settings, ChevronDown, ChevronUp, Rss, Plus, ExternalLink } from 'lucide-react';
+
+        // --- VOICES ---
+        const VoiceName = { Puck: 'Puck', Charon: 'Charon', Kore: 'Kore', Fenrir: 'Fenrir', Zephyr: 'Zephyr' };
+
+        const DEFAULT_SYSTEM_PROMPT = `Du bist ein professioneller Podcast-Produzent.
+Aufgabe: Erstelle einen tiefgründigen Dialog auf Deutsch.
+Regeln:
+1. Starte SOFORT mit dem Namen des Hosts (z.B. "Sarah:").
+2. Keine Meta-Kommentare ("Hier ist das Skript").
+3. Nutze Fakten aus den Quellen.`;
+
+        // --- HELPERS ---
+        const fetchRssFeeds = async (urls) => {
+            let combined = "";
+            const articles = [];
+            for (const url of urls) {
+                if(!url.trim()) continue;
+                try {
+                    const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+                    if(res.ok) {
+                        const txt = await res.text();
+                        const parser = new DOMParser();
+                        const xml = parser.parseFromString(txt, "text/xml");
+                        const items = Array.from(xml.querySelectorAll("item, entry")).slice(0, 3);
+                        const title = xml.querySelector("channel > title")?.textContent || "Feed";
+                        combined += `\n=== QUELLE: ${title} ===\n`;
+                        items.forEach(item => {
+                            const t = item.querySelector("title")?.textContent || "";
+                            let d = item.querySelector("description")?.textContent || "";
+                            d = d.replace(/<[^>]*>?/gm, ' ').substring(0, 300);
+                            combined += `- ${t}: ${d}\n`;
+                            articles.push({title:t, source:title});
+                        });
+                    }
+                } catch(e) { console.warn(e); }
+            }
+            return { combined, articles };
+        };
+
+        // --- AUDIO ENGINE ---
+        const decodeBlob = async (blob, ctx) => { const ab = await blob.arrayBuffer(); return await ctx.decodeAudioData(ab); };
+        
+        const decodeBase64 = async (base64, ctx) => {
+            const bin = atob(base64);
+            const len = bin.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+            return await ctx.decodeAudioData(bytes.buffer);
+        };
+
+        const mixAudio = async (voiceBuf, musicBuf, introBuf, outroBuf, vols) => {
+             const ctx = new OfflineAudioContext(2, 44100 * 600, 44100);
+             const add = (buf, vol, start, loop=false, dur=0) => {
+                 if(!buf) return;
+                 const src = ctx.createBufferSource(); src.buffer = buf; src.loop = loop;
+                 const gain = ctx.createGain(); gain.gain.value = vol;
+                 src.connect(gain); gain.connect(ctx.destination);
+                 src.start(start); if(dur>0) src.stop(start+dur);
+             };
+             const iDur = introBuf ? introBuf.duration : 0;
+             const vDur = voiceBuf ? voiceBuf.duration : 0;
+             add(introBuf, vols.intro, 0);
+             add(voiceBuf, 1.0, iDur);
+             add(musicBuf, vols.music, iDur, true, vDur);
+             add(outroBuf, vols.outro, iDur + vDur);
+             const rendered = await ctx.startRendering();
+             const totalLen = Math.ceil((iDur + vDur + (outroBuf ? outroBuf.duration : 0)) * 44100);
+             const finalCtx = new OfflineAudioContext(2, Math.max(totalLen, 44100), 44100);
+             const src = finalCtx.createBufferSource(); src.buffer = rendered; src.connect(finalCtx.destination); src.start(0);
+             return await finalCtx.startRendering();
+        };
+
+        const bufferToMp3 = (buffer) => {
+             if(!window.lamejs) throw new Error("LameJS fehlt");
+             const mp3encoder = new window.lamejs.Mp3Encoder(buffer.numberOfChannels, buffer.sampleRate, 192);
+             const left = buffer.getChannelData(0);
+             const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
+             const sampleBlock = 1152;
+             const mp3Data = [];
+             const l16 = new Int16Array(sampleBlock);
+             const r16 = new Int16Array(sampleBlock);
+             for(let i=0; i<left.length; i+=sampleBlock) {
+                 const lC = left.subarray(i, i+sampleBlock);
+                 const rC = right.subarray(i, i+sampleBlock);
+                 for(let j=0; j<lC.length; j++) l16[j] = lC[j]<0 ? lC[j]*0x8000 : lC[j]*0x7FFF;
+                 for(let j=0; j<rC.length; j++) r16[j] = rC[j]<0 ? rC[j]*0x8000 : rC[j]*0x7FFF;
+                 const b = (buffer.numberOfChannels===1) ? mp3encoder.encodeBuffer(l16.subarray(0,lC.length)) : mp3encoder.encodeBuffer(l16.subarray(0,lC.length), r16.subarray(0,rC.length));
+                 if(b.length>0) mp3Data.push(b);
+             }
+             const end = mp3encoder.flush();
+             if(end.length>0) mp3Data.push(end);
+             return new Blob(mp3Data, {type:'audio/mp3'});
+        };
+
+        // --- API SERVICES ---
+        const generateScript = async (apiKey, topic, host, guest, useSearch, rssContent, sysInstr) => {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            let prompt = `Thema: "${topic}"\nHost: ${host}, Gast: ${guest}\n`;
+            if(rssContent) prompt += `\nRSS QUELLEN:\n${rssContent}\n`;
+            
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: sysInstr }] }
+            };
+            if(useSearch) payload.tools = [{ google_search: {} }];
+
+            const res = await fetch(url, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if(data.error) throw new Error(data.error.message);
+            return data.candidates[0].content.parts[0].text;
+        };
+
+        // --- KEY FIX: CORRECT JSON STRUCTURE FOR REST API AUDIO ---
+        const generateGoogleAudio = async (apiKey, script, host, guest, hostVoice, guestVoice) => {
+            // Wir nutzen 'exp', weil 'lite' kein Audio kann.
+            const model = "gemini-2.0-flash-exp"; 
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            
+            // WICHTIG: REST API erfordert snake_case (mit Unterstrich) für diese neuen Felder!
+            const payload = {
+                contents: [{ parts: [{ text: `Lies diesen Text. ${host} hat die Stimme ${hostVoice}, ${guest} hat die Stimme ${guestVoice}.\n\n${script}` }] }],
+                generationConfig: {
+                    response_modalities: ["AUDIO"], // snake_case!
+                    speech_config: { 
+                        voice_config: { 
+                            prebuilt_voice_config: { voice_name: hostVoice } 
+                        } 
+                    }
+                }
+            };
+
+            const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+            const data = await res.json();
+            
+            if(data.error) throw new Error("Google Audio Error: " + data.error.message);
+            
+            if(!data.candidates || !data.candidates[0].content.parts[0].inlineData) {
+                console.error("Full Response:", data);
+                throw new Error("Keine Audiodaten erhalten. Prüfe Log.");
+            }
+            
+            const base64 = data.candidates[0].content.parts[0].inlineData.data;
+            return base64;
+        };
+
+        // --- MAIN APP ---
+        const App = () => {
+            const [googleKey, setGoogleKey] = useState(localStorage.getItem('KEY_GOOGLE')||'');
+            const [showKeys, setShowKeys] = useState(!googleKey);
+            
+            // State
+            const [topic, setTopic] = useState("");
+            const [host, setHost] = useState("Sarah");
+            const [guest, setGuest] = useState("Tom");
+            const [script, setScript] = useState("");
+            
+            // Toggles
+            const [useSearch, setUseSearch] = useState(true);
+            const [useRss, setUseRss] = useState(false);
+            const [rssFeeds, setRssFeeds] = useState([]);
+            const [newRss, setNewRss] = useState("");
+            const [showSettings, setShowSettings] = useState(false);
+            const [sysInstr, setSysInstr] = useState(DEFAULT_SYSTEM_PROMPT);
+            
+            // Audio
+            const [hostVoice, setHostVoice] = useState(VoiceName.Kore);
+            const [guestVoice, setGuestVoice] = useState(VoiceName.Puck);
+            const [files, setFiles] = useState({ intro: null, music: null, outro: null });
+            const [vols, setVols] = useState({ intro: 0.5, music: 0.1, outro: 0.5 });
+            
+            const [loading, setLoading] = useState(false);
+            const [status, setStatus] = useState("");
+            const [audioUrl, setAudioUrl] = useState(null);
+
+            const handleFile = (e, type) => { if(e.target.files[0]) setFiles({...files, [type]: {blob: e.target.files[0], name: e.target.files[0].name}}); };
+
+            const runScriptGen = async () => {
+                if(!topic) return alert("Thema fehlt");
+                setLoading(true); setStatus("Analysiere...");
+                try {
+                    let rssContent = "";
+                    if(useRss && rssFeeds.length) {
+                        const r = await fetchRssFeeds(rssFeeds);
+                        rssContent = r.combined;
+                    }
+                    const txt = await generateScript(googleKey, topic, host, guest, useSearch, rssContent, sysInstr);
+                    setScript(txt);
+                    setStatus("");
+                } catch(e){alert(e.message);}
+                setLoading(false);
+            };
+
+            const runAudioGen = async () => {
+                if(!script) return;
+                setLoading(true);
+                try {
+                    setStatus("Generiere Stimmen (Google Native)...");
+                    
+                    // 1. Text cleanen
+                    const cleanScript = script.replace(/\*\*/g, '').replace(/\*/g, '');
+                    
+                    // 2. Audio generieren
+                    const voiceBase64 = await generateGoogleAudio(googleKey, cleanScript, host, guest, hostVoice, guestVoice);
+                    
+                    setStatus("Audio Mixing...");
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const voiceBuf = await decodeBase64(voiceBase64, ctx);
+                    
+                    const iBuf = files.intro ? await decodeBlob(files.intro.blob, ctx) : null;
+                    const mBuf = files.music ? await decodeBlob(files.music.blob, ctx) : null;
+                    const oBuf = files.outro ? await decodeBlob(files.outro.blob, ctx) : null;
+
+                    const mix = await mixAudio(voiceBuf, mBuf, iBuf, oBuf, vols);
+                    const mp3 = bufferToMp3(mix);
+                    setAudioUrl(URL.createObjectURL(mp3));
+                    setStatus("");
+                } catch(e) { alert("Audio Fehler: " + e.message); }
+                setLoading(false);
+            };
+
+            const saveKeys = () => { localStorage.setItem('KEY_GOOGLE', googleKey); setShowKeys(false); };
+
+            return (
+                <div className="container mx-auto max-w-[1200px] bg-white rounded-[16px] min-h-screen shadow-sm border border-[rgba(0,0,0,0.05)] mb-12">
+                    
+                    {/* HEADER */}
+                    <div className="relative bg-white px-10 py-16 text-center border-b-2 border-[#c0ae66] rounded-t-[16px] overflow-hidden">
+                        <div className="absolute inset-0 z-0 opacity-30" style={{backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 200"><path d="M0,50 Q300,100 600,50 T1200,50 L1200,0 L0,0 Z" fill="rgba(240,240,240,1)"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundSize: 'cover'}} />
+                        <button onClick={()=>setShowKeys(true)} className="absolute top-5 right-8 bg-[#f9f9f9] border border-[rgba(0,0,0,0.05)] text-[#181818] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#e5e5e5] z-10">API Key</button>
+                        <div className="relative z-10 flex flex-col items-center justify-center">
+                           <img src="https://anyever.de/wp-content/themes/anyever/static/images/logo-anyever-gold.svg" alt="Logo" className="w-[200px] h-auto mb-2 opacity-95" />
+                           <div className="text-sm font-medium tracking-[0.05em] text-[#181818] uppercase mt-1">ENJOY.AUDIO</div>
+                           <h1 className="text-[2.5rem] font-[100] tracking-[4px] text-[#181818] mb-4">Podcast Generator</h1>
+                        </div>
+                    </div>
+
+                    {/* MAIN CONTENT */}
+                    <div className="grid grid-cols-1 gap-8 p-8 lg:p-12 bg-[#f9f9f9]">
+                        
+                        {/* KEYS MODAL */}
+                        {showKeys && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                                <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border-t-4 border-[#c0ae66]">
+                                    <h3 className="font-bold mb-4 text-lg">Studio Setup</h3>
+                                    <div className="space-y-4">
+                                        <div><label className="block text-xs font-bold text-gray-500 mb-1">Google Gemini Key</label><input type="password" value={googleKey} onChange={e=>setGoogleKey(e.target.value)} className="w-full p-2 border rounded" /></div>
+                                        <button onClick={saveKeys} className="btn-primary w-full py-3 rounded-xl font-bold text-sm">Speichern</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TEXT SECTION */}
+                        <div className="card p-8">
+                            <div className="border-b border-[#c0ae66] pb-4 mb-6">
+                                <h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide"><Sparkles className="w-5 h-5 text-[#c0ae66]" /> KONFIGURATION</h2>
+                            </div>
+                            <div className="grid grid-cols-2 gap-6 mb-6">
+                                <div><label className="text-xs font-bold text-gray-500 uppercase">Host</label><input value={host} onChange={e=>setHost(e.target.value)} className="w-full rounded-xl py-3 px-4 mt-1"/></div>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase">Gast</label><input value={guest} onChange={e=>setGuest(e.target.value)} className="w-full rounded-xl py-3 px-4 mt-1"/></div>
+                            </div>
+                            <div className="mb-6"><label className="text-xs font-bold text-gray-500 uppercase">Thema</label><input value={topic} onChange={e=>setTopic(e.target.value)} className="w-full rounded-xl py-3 px-4 mt-1" placeholder="Thema eingeben..."/></div>
+                            
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer ${useSearch ? 'border-[#c0ae66] bg-[#fcfcfc]' : 'bg-white border-dashed'}`}>
+                                    <input type="checkbox" checked={useSearch} onChange={e=>setUseSearch(e.target.checked)} className="accent-[#c0ae66]"/> <span className="text-sm">Google Search</span>
+                                </label>
+                                <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer ${useRss ? 'border-[#c0ae66] bg-[#fcfcfc]' : 'bg-white border-dashed'}`}>
+                                    <input type="checkbox" checked={useRss} onChange={e=>setUseRss(e.target.checked)} className="accent-[#c0ae66]"/> <span className="text-sm">RSS Feeds</span>
+                                </label>
+                            </div>
+
+                            {useRss && (
+                                <div className="flex gap-2 mb-6">
+                                    <input value={newRss} onChange={e=>setNewRss(e.target.value)} placeholder="RSS URL..." className="flex-1 p-2 border rounded-lg text-sm"/>
+                                    <button onClick={()=>{setRssFeeds([...rssFeeds, newRss]); setNewRss("");}} className="bg-gray-200 px-3 rounded">+</button>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end mb-4"><button onClick={()=>setShowSettings(!showSettings)} className="text-xs text-gray-400 flex items-center gap-1"><Settings size={10}/> Prompt Einstellungen</button></div>
+                            {showSettings && <textarea value={sysInstr} onChange={e=>setSysInstr(e.target.value)} rows={4} className="w-full p-3 text-xs font-mono bg-gray-50 rounded-lg mb-6" placeholder="System Prompt..."/>}
+
+                            <button onClick={runScriptGen} disabled={loading} className="btn-primary w-full py-3 rounded-full font-bold text-sm flex justify-center items-center gap-2">
+                                {loading && !script ? <Loader2 className="animate-spin"/> : <Sparkles/>} Skript Generieren
+                            </button>
+
+                            {script && (
+                                <div className="mt-6 p-4 bg-[#f9f9f9] rounded-xl border">
+                                    <div className="flex justify-between mb-2"><span className="text-xs font-bold uppercase text-gray-400">Skript Vorschau</span></div>
+                                    <textarea value={script} onChange={e=>setScript(e.target.value)} className="w-full h-64 bg-transparent text-sm font-mono resize-none outline-none"/>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* AUDIO SECTION */}
+                        <div className="card p-8">
+                            <div className="border-b border-[#c0ae66] pb-4 mb-6">
+                                <h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide"><Volume2 className="w-5 h-5 text-[#c0ae66]" /> AUDIO DESIGN</h2>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-6 mb-8">
+                                <div className="bg-[#f9f9f9] p-4 rounded-2xl border">
+                                    <label className="text-xs font-bold uppercase text-gray-500 block mb-2">{host}</label>
+                                    <select value={hostVoice} onChange={e=>setHostVoice(e.target.value)} className="w-full p-2 rounded border">
+                                        {Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                </div>
+                                <div className="bg-[#f9f9f9] p-4 rounded-2xl border">
+                                    <label className="text-xs font-bold uppercase text-gray-500 block mb-2">{guest}</label>
+                                    <select value={guestVoice} onChange={e=>setGuestVoice(e.target.value)} className="w-full p-2 rounded border">
+                                        {Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 mb-8">
+                                {[
+                                    {id:'intro', l:'Intro', v:vols.intro},
+                                    {id:'music', l:'Musik', v:vols.music},
+                                    {id:'outro', l:'Outro', v:vols.outro}
+                                ].map(x => (
+                                    <div key={x.id} className="flex items-center gap-4 p-3 border border-dashed rounded-xl bg-[#f9f9f9]">
+                                        <span className="w-16 text-xs font-bold uppercase text-gray-500">{x.l}</span>
+                                        <label className="flex-1 text-xs cursor-pointer bg-white border p-2 rounded truncate hover:border-[#c0ae66]">
+                                            {files[x.id] ? files[x.id].name : "Upload MP3..."}
+                                            <input type="file" accept="audio/*" className="hidden" onChange={e=>handleFile(e, x.id)}/>
+                                        </label>
+                                        <div className="flex items-center gap-2 w-40">
+                                            <Volume2 size={14} className="text-gray-400"/>
+                                            <input type="range" min="0" max="1" step="0.1" value={x.v} onChange={e=>setVols({...vols, [x.id]:parseFloat(e.target.value)})} className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                                            <span className="text-xs text-gray-500 w-8 text-right">{Math.round(x.v*100)}%</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <button onClick={runAudioGen} disabled={loading || !script} className="btn-primary w-full py-5 rounded-full font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-2 shadow-lg">
+                                {loading && script ? <><Loader2 className="animate-spin"/> {status}</> : <><Music/> PODCAST PRODUZIEREN</>}
+                            </button>
+
+                            {/* RESULT */}
+                            {audioUrl && (
+                                <div className="mt-8 animate-fade-in bg-[#fcfcfc] border border-[#c0ae66] p-6 rounded-2xl shadow-xl">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div><div className="font-bold text-[#181818] text-lg">Finaler Mixdown</div><div className="text-xs text-[#c0ae66] uppercase tracking-wider">Fertig</div></div>
+                                        <a href={audioUrl} download={`podcast_${new Date().toISOString().slice(0,10)}.mp3`} className="bg-[#181818] text-white px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider hover:bg-black flex gap-2 items-center shadow-md"><Download size={14}/> MP3 Download</a>
+                                    </div>
+                                    <audio controls src={audioUrl} className="w-full accent-[#c0ae66] h-10" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="text-center py-8 text-[#717684] text-xs bg-white border-t border-[rgba(0,0,0,0.05)]">Powered by Gemini 2.0 & ANY EVER Audio Engine</div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
