@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { Loader2, Sparkles, Globe, Users, Settings, ChevronDown, ChevronUp, RotateCcw, Rss, Plus, Trash2, X } from 'lucide-react';
+import { Loader2, Sparkles, Globe, Users, Settings, ChevronDown, ChevronUp, RotateCcw, Rss, Plus, Trash2, X, ExternalLink } from 'lucide-react';
 import { generateScript } from '../services/geminiService.ts';
 import { GeneratedScriptResponse, RssArticle } from '../types.ts';
 import { fetchRssFeeds } from '../utils/rssUtils.ts';
@@ -73,7 +72,10 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
   const [newRssInput, setNewRssInput] = useState('');
 
   const [currentScript, setCurrentScript] = useState('');
+  
+  // Sources for display
   const [sources, setSources] = useState<{ title: string; uri: string }[]>([]);
+  const [localRssArticles, setLocalRssArticles] = useState<RssArticle[]>([]);
   
   // Advanced Settings State
   const [showSettings, setShowSettings] = useState(false);
@@ -124,21 +126,21 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
     
     setLoading(true);
     setSources([]);
-    setSearchSources([]); // Clear previous search sources in parent
+    setSearchSources([]); 
+    setLocalRssArticles([]);
+    setRssArticles([]);
+    
     let rssContent = "";
 
     try {
-      // 1. Fetch RSS if enabled
       if (useRss && rssFeeds.length > 0) {
         setLoadingStatus("Lese & Analysiere RSS Feeds...");
         const { combinedContent, articles } = await fetchRssFeeds(rssFeeds);
         rssContent = combinedContent;
-        setRssArticles(articles); // Pass structured articles to App -> AudioSection for email
-      } else {
-        setRssArticles([]);
+        setRssArticles(articles); 
+        setLocalRssArticles(articles);
       }
 
-      // 2. Generate Script
       setLoadingStatus("Schreibe Deep Dive Skript...");
       const result: GeneratedScriptResponse = await generateScript(
         topic, 
@@ -150,10 +152,9 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
       );
       setCurrentScript(result.script);
       
-      // Handle search sources
       if (result.searchSources) {
         setSources(result.searchSources);
-        setSearchSources(result.searchSources); // Pass to parent
+        setSearchSources(result.searchSources);
       }
       
       onScriptReady(result.script);
@@ -177,50 +178,50 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
   };
 
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg mb-8">
-      <div className="p-6 border-b border-slate-700 bg-slate-900/50">
-        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-purple-400" />
-          Schritt 1: Skript Generieren
+    <div className="card p-8 transition-all hover:shadow-lg">
+      <div className="border-b border-[#c0ae66] pb-4 mb-6">
+        <h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide">
+          <Sparkles className="w-5 h-5 text-[#c0ae66]" />
+          SCHRITT 1: SKRIPT GENERIEREN
         </h2>
-        <p className="text-slate-400 text-sm mt-1">
+        <p className="text-[#717684] text-sm mt-1">
           Wähle ein Thema und die Sprecher.
         </p>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6">
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
-              <Users className="w-4 h-4 text-slate-400" /> Name Sprecher 1
+            <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Users className="w-3 h-3 text-[#717684]" /> Name Sprecher 1
             </label>
             <input
               type="text"
               value={hostName}
               onChange={(e) => setHostName(e.target.value)}
               placeholder="z.B. Sarah"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 px-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+              className="w-full rounded-xl py-3 px-4 transition-all"
             />
            </div>
            <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
-               <Users className="w-4 h-4 text-slate-400" /> Name Sprecher 2
+            <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2 flex items-center gap-2">
+               <Users className="w-3 h-3 text-[#717684]" /> Name Sprecher 2
             </label>
             <input
               type="text"
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
               placeholder="z.B. Tom"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2.5 px-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+              className="w-full rounded-xl py-3 px-4 transition-all"
             />
            </div>
         </div>
 
         {/* Input Area */}
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider mb-2">
               Podcast Thema
             </label>
             <div className="relative">
@@ -229,18 +230,18 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 placeholder="z.B. Die neuesten Durchbrüche im Quantencomputing"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg py-3 px-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                className="w-full rounded-xl py-3 px-4 transition-all"
               />
             </div>
           </div>
 
           {/* Options: Search, RSS, Settings */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-6">
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                {/* Google Search Toggle */}
-              <label className="flex items-center cursor-pointer gap-3 p-3 rounded-lg border border-slate-700 bg-slate-900/50 hover:bg-slate-800 transition-colors">
-                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useSearch ? 'bg-purple-600 border-purple-600' : 'border-slate-600'}`}>
+              <label className="flex items-center cursor-pointer gap-3 p-4 rounded-2xl border border-transparent bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors hover:shadow-md border-dashed hover:border-[#c0ae66]">
+                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${useSearch ? 'bg-[#c0ae66] border-[#c0ae66]' : 'border-[#d1d5db] bg-white'}`}>
                   {useSearch && <Globe className="w-3 h-3 text-white" />}
                 </div>
                 <input 
@@ -250,14 +251,14 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
                   onChange={(e) => setUseSearch(e.target.checked)} 
                 />
                 <div>
-                  <span className="text-sm font-medium text-slate-200 block">Google Search Grounding</span>
-                  <span className="text-xs text-slate-500">Echtzeit-Web-Infos nutzen</span>
+                  <span className="text-sm font-medium text-[#181818] block">Google Search Grounding</span>
+                  <span className="text-xs text-[#717684]">Echtzeit-Web-Infos nutzen</span>
                 </div>
               </label>
 
               {/* RSS Toggle */}
-              <label className="flex items-center cursor-pointer gap-3 p-3 rounded-lg border border-slate-700 bg-slate-900/50 hover:bg-slate-800 transition-colors">
-                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${useRss ? 'bg-orange-500 border-orange-500' : 'border-slate-600'}`}>
+              <label className="flex items-center cursor-pointer gap-3 p-4 rounded-2xl border border-transparent bg-[#f9f9f9] hover:bg-[#f0f0f0] transition-colors hover:shadow-md border-dashed hover:border-[#c0ae66]">
+                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${useRss ? 'bg-[#c0ae66] border-[#c0ae66]' : 'border-[#d1d5db] bg-white'}`}>
                   {useRss && <Rss className="w-3 h-3 text-white" />}
                 </div>
                 <input 
@@ -270,16 +271,16 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
                   }} 
                 />
                 <div>
-                  <span className="text-sm font-medium text-slate-200 block">RSS Feeds einbinden</span>
-                  <span className="text-xs text-slate-500">Deep Dive in Feed-Inhalte</span>
+                  <span className="text-sm font-medium text-[#181818] block">RSS Feeds einbinden</span>
+                  <span className="text-xs text-[#717684]">Deep Dive in Feed-Inhalte</span>
                 </div>
               </label>
             </div>
 
             {/* RSS Management UI */}
             {useRss && showRssInput && (
-              <div className="bg-slate-900/50 border border-orange-500/30 rounded-lg p-4 animate-in fade-in slide-in-from-top-2 space-y-3">
-                <label className="block text-xs font-semibold text-orange-400 uppercase tracking-wider">
+              <div className="bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-6 shadow-sm space-y-4">
+                <label className="block text-xs font-semibold text-[#c0ae66] uppercase tracking-wider border-b border-[#c0ae66] pb-2 mb-2">
                   RSS Feeds verwalten
                 </label>
                 
@@ -291,35 +292,35 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
                     onChange={(e) => setNewRssInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="https://example.com/feed.xml"
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
+                    className="flex-1 rounded-full px-4 py-2 text-sm"
                   />
                   <button
                     onClick={handleAddRssFeed}
-                    className="bg-orange-600 hover:bg-orange-500 text-white px-3 rounded flex items-center justify-center transition-colors"
+                    className="btn-primary w-10 h-10 rounded-full flex items-center justify-center"
                     title="Feed hinzufügen"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-5 h-5" />
                   </button>
                 </div>
 
                 {/* Feed List */}
                 {rssFeeds.length > 0 ? (
-                  <ul className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar pr-1">
+                  <ul className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
                     {rssFeeds.map((url, idx) => (
-                      <li key={idx} className="group flex items-center justify-between bg-slate-800/50 border border-slate-700/50 rounded px-3 py-2 text-xs hover:bg-slate-800 transition-colors">
-                        <span className="text-slate-300 truncate mr-2 font-mono" title={url}>{url}</span>
+                      <li key={idx} className="group flex items-center justify-between bg-[#f9f9f9] border border-[rgba(0,0,0,0.05)] rounded-xl px-4 py-3 text-sm hover:border-[#c0ae66] transition-colors">
+                        <span className="text-[#333] truncate mr-2 font-medium" title={url}>{url}</span>
                         <button
                           onClick={() => handleRemoveRssFeed(idx)}
-                          className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="text-[#717684] hover:text-[#c0392b] transition-colors"
                           title="Feed entfernen"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                   <div className="text-center py-2 text-slate-600 text-xs italic">Noch keine Feeds. Füge oben eine URL hinzu.</div>
+                   <div className="text-center py-4 text-[#717684] text-sm italic border border-dashed border-[rgba(0,0,0,0.1)] rounded-xl">Noch keine Feeds. Füge oben eine URL hinzu.</div>
                 )}
               </div>
             )}
@@ -327,7 +328,7 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
             <div className="flex justify-end">
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className="flex items-center gap-2 text-xs text-slate-400 hover:text-white transition-colors"
+                className="flex items-center gap-2 text-xs text-[#717684] hover:text-[#181818] transition-colors bg-[#f9f9f9] px-3 py-1.5 rounded-full border border-[rgba(0,0,0,0.05)]"
               >
                 <Settings className="w-3 h-3" />
                 {showSettings ? 'Erweiterte Einstellungen verbergen' : 'Erweiterte Einstellungen'}
@@ -337,14 +338,14 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
 
             {/* Collapsible Advanced Settings */}
             {showSettings && (
-              <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="bg-[#f9f9f9] border border-[rgba(0,0,0,0.05)] rounded-2xl p-6 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center justify-between mb-4">
+                  <label className="block text-xs font-semibold text-[#333] uppercase tracking-wider">
                     System Prompt (KI-Anweisungen)
                   </label>
                   <button 
                     onClick={handleResetInstruction}
-                    className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    className="text-xs text-[#c0ae66] hover:text-[#a08e46] flex items-center gap-1 font-medium"
                   >
                     <RotateCcw className="w-3 h-3" /> Zurücksetzen
                   </button>
@@ -353,10 +354,10 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
                   value={systemInstruction}
                   onChange={(e) => setSystemInstruction(e.target.value)}
                   rows={6}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-3 text-xs text-slate-300 font-mono focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                  className="w-full rounded-xl p-3 text-xs text-[#333] font-mono leading-relaxed"
                   placeholder="Anweisungen für das Modell..."
                 />
-                <p className="text-[10px] text-slate-500 mt-2">
+                <p className="text-[10px] text-[#717684] mt-2">
                   Tipp: Hier kannst du die Persönlichkeit, den Ton oder die Formatierung anpassen. Sprechernamen und Thema werden automatisch angehängt.
                 </p>
               </div>
@@ -365,11 +366,7 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
             <button
               onClick={handleGenerate}
               disabled={loading || !topic.trim() || !hostName.trim() || !guestName.trim()}
-              className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium text-white transition-all transform active:scale-[0.99]
-                ${loading || !topic.trim() 
-                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed' 
-                  : 'bg-purple-600 hover:bg-purple-500 shadow-lg shadow-purple-900/20'
-                }`}
+              className="btn-primary w-full flex items-center justify-center gap-2 px-8 py-4 rounded-full font-bold uppercase tracking-widest text-sm"
             >
               {loading ? (
                 <>
@@ -388,33 +385,64 @@ const ScriptSection: React.FC<ScriptSectionProps> = ({
 
         {/* Results Area */}
         {currentScript && (
-          <div className="animate-fade-in">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-slate-300">
+          <div className="animate-fade-in pt-8 border-t border-[rgba(0,0,0,0.05)]">
+            <div className="flex items-center justify-between mb-4">
+              <label className="block text-xs font-medium text-[#181818] uppercase tracking-wider">
                 Skript Editor
               </label>
-              <span className="text-xs text-slate-500">Bearbeitbar</span>
+              <span className="text-xs text-[#717684] bg-[#f9f9f9] px-2 py-1 rounded-md border border-[rgba(0,0,0,0.05)]">Bearbeitbar</span>
             </div>
             <textarea
               value={currentScript}
               onChange={handleScriptChange}
-              rows={10}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg p-4 text-slate-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 leading-relaxed"
+              rows={12}
+              className="w-full bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-6 text-[#333] font-mono text-sm leading-relaxed shadow-inner"
             />
             
-            {/* Sources Display */}
+            {/* RSS Sources Display */}
+            {localRssArticles.length > 0 && (
+              <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl border border-[rgba(0,0,0,0.05)]">
+                <h4 className="text-xs font-semibold text-[#c0ae66] uppercase tracking-wider mb-4 border-b border-[#c0ae66] pb-2 inline-block">
+                  Verwendete RSS-Quellen
+                </h4>
+                <ul className="space-y-3">
+                  {localRssArticles.map((article, idx) => (
+                    <li key={idx} className="flex flex-col gap-1 text-sm">
+                      <div className="flex items-start gap-2 font-medium text-[#181818]">
+                        <Rss className="w-4 h-4 text-[#c0ae66] mt-0.5 shrink-0" />
+                        {article.title}
+                      </div>
+                      <div className="flex items-center gap-2 pl-6 text-xs text-[#717684]">
+                         <span className="uppercase tracking-wide font-semibold">{article.source}</span>
+                         <span className="text-gray-300">•</span>
+                         <a 
+                            href={article.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-[#c0ae66] hover:underline hover:text-[#a08e46] transition-colors"
+                         >
+                           Artikel öffnen <ExternalLink className="w-3 h-3" />
+                         </a>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Google Search Sources Display */}
             {sources.length > 0 && (
-              <div className="mt-4 bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Verwendete Quellen (Google Search)</h4>
+              <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl border border-[rgba(0,0,0,0.05)]">
+                <h4 className="text-xs font-semibold text-[#c0ae66] uppercase tracking-wider mb-4 border-b border-[#c0ae66] pb-2 inline-block">Verwendete Quellen (Google Search)</h4>
                 <ul className="space-y-2">
                   {sources.map((source, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-xs">
-                      <Globe className="w-3 h-3 text-purple-400 mt-0.5 shrink-0" />
+                    <li key={idx} className="flex items-start gap-2 text-sm">
+                      <Globe className="w-4 h-4 text-[#c0ae66] mt-0.5 shrink-0" />
                       <a 
                         href={source.uri} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-purple-300 hover:text-purple-200 hover:underline truncate"
+                        className="text-[#333] hover:text-[#c0ae66] hover:underline truncate transition-colors"
                       >
                         {source.title || source.uri}
                       </a>
