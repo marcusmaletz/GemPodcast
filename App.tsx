@@ -3,17 +3,29 @@ import React, { useState, useEffect } from 'react';
 import ScriptSection from './components/ScriptSection.tsx';
 import AudioSection from './components/AudioSection.tsx';
 import { Mic2 } from 'lucide-react';
+import { RssArticle } from './types.ts';
 
 const App: React.FC = () => {
-  const [script, setScript] = useState('');
+  // Persist script
+  const [script, setScript] = useState(() => localStorage.getItem('podcastScript') || '');
   
   // Lifted state for Topic to share with Email function
-  // Persist Topic to localStorage
   const [topic, setTopic] = useState(() => localStorage.getItem('podcastTopic') || '');
 
   // Initialize names from localStorage or default
   const [hostName, setHostName] = useState(() => localStorage.getItem('hostName') || 'Host');
   const [guestName, setGuestName] = useState(() => localStorage.getItem('guestName') || 'Guest');
+  
+  // Store RSS Articles and Search Sources to pass to email
+  const [rssArticles, setRssArticles] = useState<RssArticle[]>(() => {
+    const saved = localStorage.getItem('rssArticles');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [searchSources, setSearchSources] = useState<{ title: string; uri: string }[]>(() => {
+    const saved = localStorage.getItem('searchSources');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   // Persist names when changed
   useEffect(() => {
@@ -28,6 +40,20 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('podcastTopic', topic);
   }, [topic]);
+  
+  // Persist Script
+  useEffect(() => {
+    localStorage.setItem('podcastScript', script);
+  }, [script]);
+
+  // Persist Sources
+  useEffect(() => {
+    localStorage.setItem('rssArticles', JSON.stringify(rssArticles));
+  }, [rssArticles]);
+
+  useEffect(() => {
+    localStorage.setItem('searchSources', JSON.stringify(searchSources));
+  }, [searchSources]);
 
   const handleScriptReady = (newScript: string) => {
     setScript(newScript);
@@ -64,12 +90,16 @@ const App: React.FC = () => {
             setGuestName={setGuestName}
             topic={topic}
             setTopic={setTopic}
+            setRssArticles={setRssArticles}
+            setSearchSources={setSearchSources}
           />
           <AudioSection 
             script={script} 
             hostName={hostName}
             guestName={guestName}
             topic={topic}
+            rssArticles={rssArticles}
+            searchSources={searchSources}
           />
         </main>
 

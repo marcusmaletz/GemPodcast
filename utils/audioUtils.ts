@@ -13,8 +13,15 @@ export const decodeBase64Audio = async (
     bytes[i] = binaryString.charCodeAt(i);
   }
   
+  // Align to 2 bytes (16-bit) to avoid RangeError on Int16Array creation
+  // If length is odd, drop the last byte
+  let bufferToUse = bytes.buffer;
+  if (bytes.byteLength % 2 !== 0) {
+    bufferToUse = bytes.buffer.slice(0, bytes.byteLength - 1);
+  }
+  
   // Manual PCM decoding (Assumes 24kHz, Mono, 16-bit Little Endian based on typical Gemini output)
-  const dataInt16 = new Int16Array(bytes.buffer);
+  const dataInt16 = new Int16Array(bufferToUse);
   const numChannels = 1;
   const sampleRate = 24000; 
   const frameCount = dataInt16.length / numChannels;
@@ -64,25 +71,33 @@ export const mixPodcastSequence = async (
   
   const totalDuration = introDur + voiceDur + outroDur;
   
-  // Create Offline Context
-  const length = Math.ceil(totalDuration * outputSampleRate);
+  // Ensure minimum length to avoid constructor error if duration is 0
+  const safeDuration = Math.max(totalDuration, 0.001);
+  const length = Math.ceil(safeDuration * outputSampleRate);
+  
   const offlineCtx = new OfflineAudioContext(numberOfChannels, length, outputSampleRate);
 
   // Helper to create and connect source with gain
   const createSource = (buffer: AudioBuffer, vol: number, startTime: number, stopTime?: number, loop: boolean = false) => {
+    // Ensure volume is finite and non-negative
+    const safeVol = isFinite(vol) && vol >= 0 ? vol : 0;
+
     const source = offlineCtx.createBufferSource();
     source.buffer = buffer;
     source.loop = loop;
 
     const gainNode = offlineCtx.createGain();
-    gainNode.gain.value = vol;
+    gainNode.gain.value = safeVol;
 
     source.connect(gainNode);
     gainNode.connect(offlineCtx.destination);
 
     source.start(startTime);
     if (stopTime !== undefined) {
-      source.stop(stopTime);
+      // Ensure stop time is after start time
+      if (stopTime > startTime) {
+        source.stop(stopTime);
+      }
     }
     return source;
   };
@@ -173,7 +188,7 @@ export const audioBufferToMp3 = (buffer: AudioBuffer): Blob => {
   // @ts-ignore
   const lamejs = window.lamejs;
   if (!lamejs) {
-    throw new Error("Lamejs library not found");
+    throw new Error("Lamejs library not found. Please ensure internet connection or script loading.");
   }
 
   const channels = buffer.numberOfChannels;

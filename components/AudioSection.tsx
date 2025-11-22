@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc, Mail, X, Send, FileAudio, CheckCircle2, Save } from 'lucide-react';
-import { VoiceName, MusicSlotIndex, StoredAudioFile } from '../types.ts';
+import { VoiceName, MusicSlotIndex, StoredAudioFile, RssArticle } from '../types.ts';
 import { generatePodcastAudio, generateVoicePreview } from '../services/geminiService.ts';
 import { 
   decodeBase64Audio, 
@@ -20,12 +20,14 @@ interface AudioSectionProps {
   hostName: string;
   guestName: string;
   topic: string;
+  rssArticles?: RssArticle[];
+  searchSources?: { title: string; uri: string }[];
 }
 
 // Hardcoded N8N Webhook URL
 const N8N_WEBHOOK_URL = 'https://anymal.app.n8n.cloud/webhook/send_mail';
 
-const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName, topic }) => {
+const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName, topic, rssArticles, searchSources }) => {
   // Initialize with storage or default
   const [hostVoice, setHostVoice] = useState<VoiceName>(() => (localStorage.getItem('hostVoice') as VoiceName) || VoiceName.Kore);
   const [guestVoice, setGuestVoice] = useState<VoiceName>(() => (localStorage.getItem('guestVoice') as VoiceName) || VoiceName.Puck);
@@ -37,12 +39,30 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
   const [musicSlots, setMusicSlots] = useState<(StoredAudioFile | null)[]>([null, null, null]);
   
   // Selection State
-  const [selectedMusicIndex, setSelectedMusicIndex] = useState<MusicSlotIndex>(-1);
+  const [selectedMusicIndex, setSelectedMusicIndex] = useState<MusicSlotIndex>(() => {
+    const saved = localStorage.getItem('selectedMusicIndex');
+    return saved !== null ? parseInt(saved) as MusicSlotIndex : -1;
+  });
   
   // Volume States (with defaults)
-  const [musicVolume, setMusicVolume] = useState<number>(0.10); 
-  const [introVolume, setIntroVolume] = useState<number>(0.7); 
-  const [outroVolume, setOutroVolume] = useState<number>(0.7); 
+  // Use safe parsing to avoid NaN
+  const [musicVolume, setMusicVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('musicVolume');
+    const val = saved !== null ? parseFloat(saved) : 0.10;
+    return isNaN(val) ? 0.10 : val;
+  });
+
+  const [introVolume, setIntroVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('introVolume');
+    const val = saved !== null ? parseFloat(saved) : 0.5;
+    return isNaN(val) ? 0.5 : val;
+  });
+
+  const [outroVolume, setOutroVolume] = useState<number>(() => {
+    const saved = localStorage.getItem('outroVolume');
+    const val = saved !== null ? parseFloat(saved) : 0.5;
+    return isNaN(val) ? 0.5 : val;
+  });
   
   // Generation State
   const [loading, setLoading] = useState(false);
@@ -68,7 +88,7 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
   const audioRef = useRef<HTMLAudioElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- Initialization: Load from DB & LocalStorage ---
+  // --- Initialization: Load from DB ---
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -83,20 +103,6 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
         const slotC = await getAudioFile('music_2');
         
         setMusicSlots([slotA, slotB, slotC]);
-
-        // Restore selection and volumes
-        const savedIndex = localStorage.getItem('selectedMusicIndex');
-        if (savedIndex !== null) setSelectedMusicIndex(parseInt(savedIndex) as MusicSlotIndex);
-
-        const savedVol = localStorage.getItem('musicVolume');
-        if (savedVol !== null) setMusicVolume(parseFloat(savedVol));
-
-        const savedIntroVol = localStorage.getItem('introVolume');
-        if (savedIntroVol !== null) setIntroVolume(parseFloat(savedIntroVol));
-
-        const savedOutroVol = localStorage.getItem('outroVolume');
-        if (savedOutroVol !== null) setOutroVolume(parseFloat(savedOutroVol));
-
       } catch (e) {
         console.error("Failed to load stored audio files", e);
       }
@@ -271,10 +277,14 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     setAudioUrl(null);
     setAudioBlob(null);
 
+    let ctx: AudioContext | null = null;
+
     try {
+      // Initialize context inside try block
+      ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
       // 1. Get Voice Audio
       const base64Data = await generatePodcastAudio(script, hostName, guestName, hostVoice, guestVoice);
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const voiceBuffer = await decodeBase64Audio(base64Data, ctx);
 
       // 2. Prepare BG Music
@@ -311,13 +321,14 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
       const url = URL.createObjectURL(mp3Blob);
       setAudioUrl(url);
       setAudioBlob(mp3Blob);
-      
-      await ctx.close();
 
-    } catch (err) {
-      console.error(err);
-      setError("Failed to generate audio. Please try again.");
+    } catch (err: any) {
+      console.error("Audio Generation Error:", err);
+      setError(err.message || "Failed to generate audio. Please try again.");
     } finally {
+      if (ctx) {
+        await ctx.close();
+      }
       setLoading(false);
     }
   };
@@ -327,8 +338,30 @@ const AudioSection: React.FC<AudioSectionProps> = ({ script, hostName, guestName
     const dateStr = new Date().toLocaleDateString('de-DE');
     const shortTopic = topic.length > 30 ? topic.substring(0, 27) + "..." : topic;
     const subject = `AI-Podcast: ${shortTopic} - ${dateStr}`;
-    const scriptPreview = script.length > 800 ? script.substring(0, 800) + "..." : script;
     
+    // Format sources for email
+    let sourcesSection = "";
+    let hasSources = false;
+
+    // Add RSS sources if present
+    if (rssArticles && rssArticles.length > 0) {
+        sourcesSection += "\n\n🔗 RSS QUELLEN:\n================================";
+        rssArticles.forEach(article => {
+            sourcesSection += `\n- ${article.title} (${article.source})\n  ${article.link}`;
+        });
+        sourcesSection += "\n================================";
+        hasSources = true;
+    }
+
+    // Add Google Search sources if present
+    if (searchSources && searchSources.length > 0) {
+        sourcesSection += `${hasSources ? '\n' : '\n\n'}🔗 WEB QUELLEN (Google):\n================================`;
+        searchSources.forEach(source => {
+            sourcesSection += `\n- ${source.title}\n  ${source.uri}`;
+        });
+        sourcesSection += "\n================================";
+    }
+
     const body = `Hallo,
 
 hier ist die neue Podcast-Folge, die wir über "${topic}" generiert haben.
@@ -337,10 +370,7 @@ hier ist die neue Podcast-Folge, die wir über "${topic}" generiert haben.
 🗣️ SPRECHER: ${hostName} & ${guestName}
 📅 DATUM: ${dateStr}
 
-📝 SKRIPT VORSCHAU:
-================================
-${scriptPreview}
-================================
+Die MP3-Datei finden Sie im Anhang.${sourcesSection}
 
 Beste Grüße,
 Gemini Podcast Studio`;

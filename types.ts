@@ -12,6 +12,13 @@ export interface ScriptLine {
   text: string;
 }
 
+export interface RssArticle {
+  title: string;
+  description: string;
+  link: string;
+  source: string;
+}
+
 export interface GeneratedScriptResponse {
   title: string;
   script: string; // Raw text format for display/editing

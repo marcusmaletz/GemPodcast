@@ -19,26 +19,39 @@ export const generateScript = async (
   hostName: string,
   guestName: string,
   useSearch: boolean = false,
+  rssContent: string = "",
   customSystemInstruction?: string
 ): Promise<GeneratedScriptResponse> => {
   try {
     const modelId = useSearch ? "gemini-2.5-flash" : "gemini-2.5-flash";
     
     // Default instruction if none provided
-    const defaultSystemInstruction = `You are a professional podcast producer.
-Your task is to write a short, engaging podcast script based on the provided topic and speaker names.
+    const defaultSystemInstruction = `Du bist ein professioneller, investigativer Podcast-Produzent.
+Deine Aufgabe ist es, einen tiefgründigen, spannenden Podcast-Dialog basierend auf dem Thema und den bereitgestellten Quellen zu schreiben.
 
-Format constraints:
-1. The script must be a dialogue.
-2. Use the exact speaker names provided as prefixes for each line (e.g. "${hostName}:" and "${guestName}:").
-3. Keep it between 150-300 words total.
-4. Make it sound natural, conversational, and enthusiastic.
-5. Do not include sound effects or stage directions like [laughs].
-6. Start immediately with the dialogue.`;
+WICHTIGE REGELN FÜR DEN INHALT:
+1. **SPRACHE**: Der gesamte Dialog muss zwingend auf DEUTSCH verfasst sein.
+2. **KEIN OBERFLÄCHLICHER SMALLTALK**: Liste nicht nur Schlagzeilen auf. Analysiere die AUSWIRKUNGEN und HINTERGRÜNDE der Nachrichten.
+3. **QUELLEN NENNEN**: Wenn Fakten aus den RSS-Feeds besprochen werden, MUSS der Name der Quelle im Dialog genannt werden (z.B. "Laut Heise Online...", "Wie The Verge berichtet hat..."). Das ist Pflicht.
+4. **DISKUSSION**: Der Host und der Gast sollten leicht unterschiedliche Perspektiven haben oder kritische Nachfragen stellen.
+5. **NATÜRLICHKEIT**: Es soll wie ein echtes Gespräch klingen, nicht wie vorgelesen.
+
+Formatierung:
+1. Das Skript muss ein Dialog sein.
+2. Nutze exakt die vorgegebenen Sprechernamen als Präfix (z.B. "${hostName}:", "${guestName}:").
+3. Länge: ca. 300-500 Wörter.
+4. Starte sofort mit dem Dialog.`;
 
     const systemInstruction = customSystemInstruction || defaultSystemInstruction;
 
-    const userPrompt = `Topic: "${topic}"\nSpeaker 1 (Host): "${hostName}"\nSpeaker 2 (Guest): "${guestName}"\n\nPlease generate the script now.`;
+    let userPrompt = `Thema: "${topic}"\nSprecher 1 (Host): "${hostName}"\nSprecher 2 (Gast): "${guestName}"\n`;
+
+    if (rssContent) {
+        userPrompt += `\n=== QUELLENMATERIAL (RSS FEEDS) ===\n${rssContent}\n\nANWEISUNG: Nutze die Details oben. Wähle die wichtigsten Stories aus. Nenne die Quellen verbal.`;
+    }
+
+    // Add strict language constraint at the end of user prompt to override any potential drift
+    userPrompt += `\n\nGeneriere jetzt das Skript. WICHTIG: Schreibe den Dialog komplett auf DEUTSCH.`;
 
     const config: any = {
       temperature: 0.7,
@@ -135,10 +148,6 @@ export const generatePodcastAudio = async (
   guestVoice: VoiceName
 ): Promise<string> => {
   try {
-    // We need to instruct the model explicitly to use the speakers defined in the config.
-    // The prompt to the TTS model acts as the script.
-    // We map the config 'speaker' names to match the script prefixes exactly.
-    
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: script }] }],
