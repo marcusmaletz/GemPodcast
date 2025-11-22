@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ANY EVER | Podcast Studio</title>
+    <title>ANY EVER | Podcast Studio (Audio Fixed)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
@@ -33,6 +34,7 @@
       body { font-family: 'Inter', sans-serif; background-color: var(--any-ever-bright-grey); color: var(--any-ever-black); padding: 24px; margin: 0; }
       
       .btn-primary { 
+        background-color: #c0ae66;
         background: var(--gradient-gold); 
         color: white; 
         box-shadow: var(--shadow-gold); 
@@ -43,38 +45,26 @@
       
       .card { background: white; border: 1px solid rgba(0,0,0,0.05); border-radius: 16px; box-shadow: 0 4px 18px rgba(0,0,0,0.04); }
       
-      /* Force light styling on inputs to prevent dark mode black fields */
+      /* Force light theme inputs */
       input, textarea, select {
-        background-color: #f9f9f9 !important; 
-        color: #181818 !important;
-        border: 1px solid rgba(0,0,0,0.1) !important;
-      }
-      
-      input:focus, textarea:focus, select:focus { 
         background-color: #ffffff !important;
+        color: #181818 !important;
+        border: 1px solid #e5e7eb !important;
+      }
+      input:focus, textarea:focus, select:focus { 
         border-color: var(--any-ever-gold) !important; 
-        outline: none !important; 
-        box-shadow: 0 0 0 3px rgba(192,174,102,0.1) !important; 
+        outline: none; 
+        box-shadow: 0 0 0 3px rgba(192,174,102,0.1); 
       }
-      
-      /* Fix select arrow */
-      select {
-        appearance: none;
-        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-        background-position: right 0.5rem center;
-        background-repeat: no-repeat;
-        background-size: 1.5em 1.5em;
-        padding-right: 2.5rem;
-      }
-
       input[type=range] { accent-color: var(--any-ever-gold); }
       
       .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
       @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      
+
+      /* Scrollbar */
       .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e5e5; border-radius: 3px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
       .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #c0ae66; }
     </style>
 </head>
@@ -84,98 +74,93 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef } from 'react';
         import ReactDOM from 'react-dom/client';
-        import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc, Mail, X, Send, FileAudio, CheckCircle2, Save, Sparkles, Globe, Users, Settings, ChevronDown, ChevronUp, Rss, Plus, ExternalLink, RotateCcw } from 'lucide-react';
+        import { Mic, Play, Pause, Download, Loader2, Volume2, Music, Upload, Square, Trash2, Disc, Mail, X, Send, FileAudio, CheckCircle2, Save, Sparkles, Globe, Users, Settings, ChevronDown, ChevronUp, Rss, Plus, ExternalLink } from 'lucide-react';
 
-        // --- VOICES ---
+        // --- 1. CONSTANTS & TYPES ---
         const VoiceName = { Puck: 'Puck', Charon: 'Charon', Kore: 'Kore', Fenrir: 'Fenrir', Zephyr: 'Zephyr' };
         const N8N_WEBHOOK_URL = 'https://anymal.app.n8n.cloud/webhook/send_mail';
 
-        const DEFAULT_SYSTEM_INSTRUCTION = `Du bist ein professioneller, investigativer Podcast-Produzent.
-Deine Aufgabe ist es, einen tiefgründigen, spannenden Podcast-Dialog basierend auf dem Thema und den bereitgestellten Quellen zu schreiben.
+        const DEFAULT_SYSTEM_INSTRUCTION = `Du bist ein faktentreuer Nachrichten-Redakteur und Podcast-Produzent.
+Deine Aufgabe: Erstelle einen Dialog auf Deutsch, der NUR auf den vorliegenden Quellen basiert.
 
-WICHTIGE REGELN FÜR DEN INHALT:
-1. **SPRACHE**: Der gesamte Dialog muss zwingend auf DEUTSCH verfasst sein.
-2. **KEIN OBERFLÄCHLICHER SMALLTALK**: Liste nicht nur Schlagzeilen auf. Analysiere die AUSWIRKUNGEN und HINTERGRÜNDE der Nachrichten.
-3. **QUELLEN NENNEN**: Wenn Fakten aus den RSS-Feeds besprochen werden, MUSS der Name der Quelle im Dialog genannt werden (z.B. "Laut Heise Online...", "Wie The Verge berichtet hat..."). Das ist Pflicht.
-4. **DISKUSSION**: Der Host und der Gast sollten leicht unterschiedliche Perspektiven haben oder kritische Nachfragen stellen.
-5. **NATÜRLICHKEIT**: Es soll wie ein echtes Gespräch klingen, nicht wie vorgelesen.
+WICHTIGE REGELN GEGEN HALLUZINATIONEN:
+1. **CLOSED DOMAIN**: Dein Wissen ist auf die bereitgestellten Texte (oder Suchergebnisse) beschränkt. Nutze KEIN externes Weltwissen.
+2. **LÜCKEN**: Wenn die Quellen keine Details liefern, darfst du KEINE Details dazu erfinden. Sag lieber weniger, aber dafür korrekt.
+3. **QUELLEN**: Nenne immer, woher die Info kommt (z.B. "Laut dem Bericht...", "Wie wir gefunden haben...").
+4. **FORMAT**: Starte SOFORT mit dem Dialog (z.B. "Sarah:"). Keine Einleitung.`;
 
-Formatierung:
-1. Das Skript muss ein Dialog sein.
-2. Nutze exakt die vorgegebenen Sprechernamen als Präfix (z.B. "Sarah:", "Tom:").
-3. Länge: ca. 400-600 Wörter.
-4. Starte sofort mit dem Dialog.`;
-
-        // --- RSS UTILS ---
+        // --- 2. UTILS: RSS FETCHING ---
         const fetchRssFeeds = async (urls) => {
-            if (urls.length === 0) return { combinedContent: "", articles: [] };
-            let combinedContent = "RSS FEED QUELLEMATERIAL (STRICT USE ONLY):\n";
-            const allArticles = [];
+            let combined = "";
+            const articles = [];
             
-            const fetchContent = async (u) => {
-                try {
-                     const r1 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`);
-                     if(r1.ok) {
-                         const d = await r1.json();
-                         if(d.contents) return d.contents;
-                     }
-                } catch(e) {}
-                try {
-                    const r2 = await fetch(`https://corsproxy.io/?${encodeURIComponent(u)}`);
-                    if(r2.ok) return await r2.text();
-                } catch(e) {}
-                return null;
-            };
-
             for (const url of urls) {
                 if(!url.trim()) continue;
-                const xmlStr = await fetchContent(url);
-                if(!xmlStr) {
-                    combinedContent += `\n(Fehler beim Laden: ${url})\n`;
-                    continue;
+                
+                // Proxies to bypass CORS
+                const proxies = [
+                    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+                    `https://corsproxy.io/?${encodeURIComponent(url)}`
+                ];
+
+                let success = false;
+                for(const endpoint of proxies) {
+                    if(success) break;
+                    try {
+                        const res = await fetch(endpoint);
+                        if(res.ok) {
+                            let txt = "";
+                            if(endpoint.includes('allorigins')) {
+                                const json = await res.json();
+                                txt = json.contents;
+                            } else {
+                                txt = await res.text();
+                            }
+                            
+                            const parser = new DOMParser();
+                            const xml = parser.parseFromString(txt, "text/xml");
+                            if(xml.querySelector("parsererror")) continue;
+
+                            const items = Array.from(xml.querySelectorAll("item, entry")).slice(0, 5);
+                            const feedTitle = xml.querySelector("channel > title")?.textContent || "Feed";
+
+                            combined += `\n=== QUELLE: ${feedTitle} ===\n`;
+
+                            items.forEach(item => {
+                                const t = item.querySelector("title")?.textContent || "Ohne Titel";
+                                const contentEncoded = item.getElementsByTagName("content:encoded")[0]?.textContent;
+                                const content = item.querySelector("content")?.textContent;
+                                const desc = item.querySelector("description")?.textContent;
+                                const summary = item.querySelector("summary")?.textContent;
+                                
+                                let rawText = contentEncoded || content || desc || summary || "";
+                                let cleanText = rawText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+                                if(cleanText.length > 2000) cleanText = cleanText.substring(0, 2000) + "...";
+
+                                let link = "";
+                                const links = item.getElementsByTagName("link");
+                                for(let i=0; i<links.length; i++) {
+                                    const href = links[i].getAttribute("href"); 
+                                    if(href) { link = href; break; }
+                                    if(links[i].textContent?.startsWith('http')) { link = links[i].textContent; break; }
+                                }
+                                if(!link) {
+                                    const guid = item.querySelector("guid")?.textContent;
+                                    if(guid?.startsWith('http')) link = guid;
+                                }
+
+                                combined += `- ARTIKEL: "${t}"\n  INHALT: ${cleanText}\n  LINK: ${link}\n`;
+                                articles.push({title: t, source: feedTitle, link: link || ""});
+                            });
+                            success = true;
+                        }
+                    } catch(e) { console.warn("RSS Fetch Error", e); }
                 }
-
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(xmlStr, "text/xml");
-                const channelTitle = xmlDoc.querySelector("channel > title, feed > title")?.textContent?.trim() || "Feed";
-                
-                combinedContent += `\n=== QUELLE: ${channelTitle} ===\n`;
-                
-                const items = Array.from(xmlDoc.querySelectorAll("item, entry")).slice(0, 5);
-                
-                items.forEach(item => {
-                    const title = item.querySelector("title")?.textContent?.trim() || "Ohne Titel";
-                    const contentEncoded = item.getElementsByTagName("content:encoded")[0]?.textContent;
-                    const description = item.querySelector("description")?.textContent;
-                    const summary = item.querySelector("summary")?.textContent;
-                    const content = item.querySelector("content")?.textContent;
-                    let fullText = contentEncoded || content || description || summary || "";
-                    fullText = fullText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
-
-                    let link = "";
-                    const atomLinks = item.getElementsByTagName("link");
-                    for(let i=0; i<atomLinks.length; i++) {
-                        const href = atomLinks[i].getAttribute("href");
-                        if(href) { link = href; break; }
-                        if(atomLinks[i].textContent?.startsWith('http')) { link = atomLinks[i].textContent.trim(); break; }
-                    }
-                    if(!link) {
-                        const guid = item.querySelector("guid, id")?.textContent?.trim();
-                        if(guid?.startsWith("http")) link = guid;
-                    }
-                    if(!link) {
-                        const match = item.innerHTML.match(/<link>(https?:\/\/[^<]+)<\/link>/i);
-                        if(match) link = match[1];
-                    }
-
-                    allArticles.push({ title, source: channelTitle, link: link || "#", description: fullText.substring(0, 200) });
-                    combinedContent += `\n- ARTIKEL: "${title}"\n  QUELLE: ${channelTitle}\n  INHALT: ${fullText.substring(0, 2000)}\n`;
-                });
             }
-            return { combinedContent, articles: allArticles };
+            return { combined, articles };
         };
 
-        // --- AUDIO ENGINE ---
+        // --- 3. UTILS: AUDIO PROCESSING ---
         const decodeBase64 = async (base64, ctx) => {
             const bin = atob(base64);
             const len = bin.length;
@@ -189,48 +174,34 @@ Formatierung:
             return await ctx.decodeAudioData(ab);
         };
 
-        const blobToBase64 = (blob) => {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        };
-
         const mixAudio = async (voiceBuf, musicBuf, introBuf, outroBuf, vols) => {
-             const OUT_RATE = 44100;
+             const outputSampleRate = 44100;
              const iDur = introBuf ? introBuf.duration : 0;
              const vDur = voiceBuf ? voiceBuf.duration : 0;
              const oDur = outroBuf ? outroBuf.duration : 0;
-             const totalDur = iDur + vDur + oDur;
              
-             const len = Math.max(Math.ceil(totalDur * OUT_RATE), OUT_RATE);
-             const ctx = new OfflineAudioContext(2, len, OUT_RATE);
+             const totalDuration = Math.ceil(iDur + vDur + oDur);
+             const ctx = new OfflineAudioContext(2, Math.max(totalDuration * outputSampleRate, 44100), outputSampleRate);
              
-             const play = (buf, vol, start, loop=false, duration=0) => {
+             const add = (buf, vol, start, loop=false, dur=0) => {
                  if(!buf) return;
-                 const src = ctx.createBufferSource(); 
-                 src.buffer = buf; 
-                 src.loop = loop;
-                 const gain = ctx.createGain(); 
-                 gain.gain.value = vol;
-                 src.connect(gain); 
-                 gain.connect(ctx.destination);
-                 src.start(start);
-                 if(duration > 0) src.stop(start + duration);
+                 const src = ctx.createBufferSource(); src.buffer = buf; src.loop = loop;
+                 const gain = ctx.createGain(); gain.gain.value = isFinite(vol) ? vol : 0;
+                 src.connect(gain); gain.connect(ctx.destination);
+                 src.start(start); 
+                 if(dur>0) src.stop(start+dur);
              };
-
-             if (introBuf) play(introBuf, vols.intro, 0);
-             play(voiceBuf, 1.0, iDur);
-             if(musicBuf) play(musicBuf, vols.music, iDur, true, vDur);
-             if(outroBuf) play(outroBuf, vols.outro, iDur + vDur);
+             
+             add(introBuf, vols.intro, 0);
+             add(voiceBuf, 1.0, iDur);
+             add(musicBuf, vols.music, iDur, true, vDur);
+             add(outroBuf, vols.outro, iDur + vDur);
              
              return await ctx.startRendering();
         };
 
         const bufferToMp3 = (buffer) => {
-             if(!window.lamejs) throw new Error("LameJS fehlt");
+             if(!window.lamejs) throw new Error("LameJS nicht geladen");
              const mp3encoder = new window.lamejs.Mp3Encoder(buffer.numberOfChannels, buffer.sampleRate, 192);
              const left = buffer.getChannelData(0);
              const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
@@ -251,523 +222,461 @@ Formatierung:
              return new Blob(mp3Data, {type:'audio/mp3'});
         };
 
-        const audioBufferToWav = (buffer) => {
-             const numOfChan = buffer.numberOfChannels;
-             const length = buffer.length * numOfChan * 2 + 44;
-             const bufferArr = new ArrayBuffer(length);
-             const view = new DataView(bufferArr);
-             const channels = [];
-             let i; let sample; let offset = 0; let pos = 0;
-             const setUint16 = (d) => { view.setUint16(pos, d, true); pos += 2; };
-             const setUint32 = (d) => { view.setUint32(pos, d, true); pos += 4; };
-
-             setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
-             setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-             setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16);
-             setUint32(0x61746164); setUint32(length - pos - 4);
-
-             for (i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
-             while (pos < length) {
-                 for (i = 0; i < numOfChan; i++) {
-                     sample = Math.max(-1, Math.min(1, channels[i][offset])); 
-                     sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0; 
-                     view.setInt16(pos, sample, true); pos += 2;
-                 }
-                 offset++;
-             }
-             return new Blob([bufferArr], { type: "audio/wav" });
-        };
-
-        // --- INDEXED DB ---
-        const DB_NAME = 'GeminiPodcastStudioDB';
-        const STORE = 'audioFiles';
-        const openDB = () => new Promise((res, rej) => {
-            const req = indexedDB.open(DB_NAME, 1);
-            req.onerror = rej;
-            req.onsuccess = () => res(req.result);
-            req.onupgradeneeded = (e) => { if(!e.target.result.objectStoreNames.contains(STORE)) e.target.result.createObjectStore(STORE); };
-        });
-        const storeFile = async (key, file) => {
-            const db = await openDB();
-            return new Promise((res, rej) => {
-                const tx = db.transaction(STORE, 'readwrite');
-                tx.objectStore(STORE).put({name: file.name, blob: file}, key);
-                tx.oncomplete = res; tx.onerror = rej;
+        // --- 4. INDEXED DB (Persistence) ---
+        const openDB = () => {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open("PodcastDB", 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if(!db.objectStoreNames.contains("files")) db.createObjectStore("files");
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
             });
         };
-        const getFile = async (key) => {
+        const saveFileDB = async (key, file) => {
             const db = await openDB();
-            return new Promise((res, rej) => {
-                const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
-                req.onsuccess = () => res(req.result); req.onerror = rej;
+            const tx = db.transaction("files", "readwrite");
+            tx.objectStore("files").put({name: file.name, blob: file}, key);
+        };
+        const getFileDB = async (key) => {
+            const db = await openDB();
+            return new Promise((resolve) => {
+                const req = db.transaction("files", "readonly").objectStore("files").get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
             });
         };
-        const deleteFile = async (key) => {
+        const delFileDB = async (key) => {
             const db = await openDB();
-            return new Promise((res, rej) => {
-                const tx = db.transaction(STORE, 'readwrite');
-                tx.objectStore(STORE).delete(key);
-                tx.oncomplete = res; tx.onerror = rej;
+            const tx = db.transaction("files", "readwrite");
+            tx.objectStore("files").delete(key);
+        };
+        const blobToBase64 = (blob) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
             });
         };
 
-        // --- API CALLS ---
-        const generateScriptApi = async (apiKey, prompt, sysInstr, useSearch) => {
+        // --- 5. API: SCRIPT ---
+        const generateScript = async (apiKey, topic, host, guest, useSearch, rssContent, sysInstr) => {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            
+            let prompt = `KONTEXT:\nHost: ${host}\nGast: ${guest}\nThema: "${topic}"\n`;
+            
+            if(rssContent) {
+                prompt += `\n‼️ STRIKTE ANWEISUNG (ANTI-HALLUZINATION) ‼️\n`;
+                prompt += `Du arbeitest im "Closed Book"-Modus. Das heißt:\n`;
+                prompt += `1. Du darfst NUR Informationen verwenden, die im folgenden Abschnitt "QUELLEN" stehen.\n`;
+                prompt += `2. Du darfst KEIN externes Wissen hinzufügen.\n`;
+                prompt += `\n=== QUELLEN START ===\n${rssContent}\n=== QUELLEN ENDE ===\n`;
+            } else if (useSearch) {
+                prompt += `\n‼️ STRIKTE ANWEISUNG FÜR GOOGLE SUCHE ‼️\n`;
+                prompt += `1. Nutze das Google Search Tool, um FAKTEN zu finden.\n`;
+                prompt += `2. ANTI-HALLUZINATION: Nutze NUR Fakten, die das Such-Tool liefert. Erfinde NICHTS dazu, auch wenn die Infos dünn sind.\n`;
+                prompt += `3. Wenn du nichts findest, sag: "Ich habe dazu keine aktuellen Informationen gefunden."\n`;
+                prompt += `4. ZITIERE die gefundenen Quellen verbal im Dialog.\n`;
+            } else {
+                 prompt += `\nAufgabe: Schreibe einen informativen Podcast-Dialog über das Thema.\n`;
+            }
+            
+            prompt += `\nAufgabe: Schreibe den Podcast-Dialog komplett auf DEUTSCH.`;
+
             const payload = {
                 contents: [{ parts: [{ text: prompt }] }],
                 systemInstruction: { parts: [{ text: sysInstr }] },
-                generationConfig: { temperature: 0.3 }
+                generationConfig: { temperature: 0.1 }, // LOW TEMP TO PREVENT HALLUCINATION
+                safetySettings: [
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" }
+                ]
             };
-            if(useSearch) payload.tools = [{ google_search: {} }];
+            if(useSearch && !rssContent) payload.tools = [{ googleSearch: {} }];
+
+            const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+            const data = await res.json();
+            if(data.error) throw new Error(data.error.message);
             
-            const r = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-            const d = await r.json();
-            if(d.error) throw new Error(d.error.message);
-            
-            const script = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            const chunks = d.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-            const sources = chunks.filter(c => c.web).map(c => ({ title: c.web.title, uri: c.web.uri }));
-            
-            return { script, sources };
+            let searchSources = [];
+            const chunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            if(chunks) chunks.forEach(c => { if(c.web) searchSources.push({title: c.web.title, uri: c.web.uri}); });
+
+            return { script: data.candidates[0].content.parts[0].text, searchSources };
         };
 
-        const generateAudioApi = async (apiKey, text, config) => {
-             // Use -exp model for audio generation as it has better support for audio modalities
-             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
-             const payload = {
-                 contents: [{ parts: [{ text }] }],
-                 generationConfig: config,
-                 safetySettings: [
-                     { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-                     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
-                     { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-                     { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" }
-                 ]
-             };
-             const r = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-             const d = await r.json();
-             if(d.error) throw new Error("Google API Error: " + d.error.message);
-             if(!d.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-                 throw new Error(`Kein Audio generiert. Finish Reason: ${d.candidates?.[0]?.finishReason}`);
-             }
-             return d.candidates[0].content.parts[0].inlineData.data;
+        // --- 6. API: AUDIO (REST) ---
+        const generateAudioREST = async (apiKey, script, host, guest, hostVoice, guestVoice) => {
+            const models = ["gemini-2.0-flash-exp", "gemini-2.0-flash"];
+            let lastError = null;
+            
+            for(const model of models) {
+                try {
+                    console.log(`Versuche Audio mit Modell: ${model}`);
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
+                    const payload = {
+                        contents: [{ parts: [{ text: `Lies diesen Dialog vor. ${host} hat die Stimme ${hostVoice}, ${guest} hat die Stimme ${guestVoice}.\n\n${script}` }] }],
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: { 
+                                multiSpeakerVoiceConfig: {
+                                    speakerVoiceConfigs: [
+                                        { speaker: host, voiceConfig: { prebuiltVoiceConfig: { voiceName: hostVoice } } },
+                                        { speaker: guest, voiceConfig: { prebuiltVoiceConfig: { voiceName: guestVoice } } }
+                                    ]
+                                }
+                            }
+                        }
+                    };
+    
+                    const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                    const data = await res.json();
+                    
+                    if(data.error) throw new Error(data.error.message);
+                    if(!data.candidates || !data.candidates[0].content.parts[0].inlineData) throw new Error("Keine Audiodaten generiert");
+                    
+                    return data.candidates[0].content.parts[0].inlineData.data;
+                } catch(e) {
+                    console.warn(`Modell ${model} fehlgeschlagen:`, e);
+                    lastError = e;
+                }
+            }
+            throw lastError || new Error("Alle Modelle fehlgeschlagen");
         };
 
-        // --- APP ---
+        // --- 7. COMPONENT: APP ---
         const App = () => {
             const [googleKey, setGoogleKey] = useState(localStorage.getItem('KEY_GOOGLE')||'');
             const [showKeys, setShowKeys] = useState(!googleKey);
             
-            // Text State
-            const [host, setHost] = useState(localStorage.getItem('hostName')||'Sarah');
-            const [guest, setGuest] = useState(localStorage.getItem('guestName')||'Tom');
-            const [topic, setTopic] = useState(localStorage.getItem('podcastTopic')||'');
+            const [topic, setTopic] = useState(localStorage.getItem('topic') || "");
+            const [host, setHost] = useState(localStorage.getItem('host') || "Sarah");
+            const [guest, setGuest] = useState(localStorage.getItem('guest') || "Tom");
+            const [script, setScript] = useState(localStorage.getItem('script') || "");
+            
             const [useSearch, setUseSearch] = useState(localStorage.getItem('useSearch')==='true');
             const [useRss, setUseRss] = useState(localStorage.getItem('useRss')==='true');
-            const [rssFeeds, setRssFeeds] = useState(()=>JSON.parse(localStorage.getItem('rssFeedsList')||'[]'));
-            const [newRss, setNewRss] = useState('');
-            const [script, setScript] = useState(localStorage.getItem('podcastScript')||'');
-            const [rssArticles, setRssArticles] = useState(()=>JSON.parse(localStorage.getItem('rssArticles')||'[]'));
-            const [searchSources, setSearchSources] = useState(()=>JSON.parse(localStorage.getItem('searchSources')||'[]'));
-            const [sysInstr, setSysInstr] = useState(localStorage.getItem('systemInstruction')||DEFAULT_SYSTEM_INSTRUCTION);
+            const [rssFeeds, setRssFeeds] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('rssList') || '[]'); } catch { return []; }
+            });
+            const [newRss, setNewRss] = useState("");
+            const [sysInstr, setSysInstr] = useState(localStorage.getItem('sysInstr') || DEFAULT_SYSTEM_INSTRUCTION);
             const [showSettings, setShowSettings] = useState(false);
-            
-            // Audio State
-            const [hostVoice, setHostVoice] = useState(localStorage.getItem('hostVoice')||VoiceName.Kore);
-            const [guestVoice, setGuestVoice] = useState(localStorage.getItem('guestVoice')||VoiceName.Puck);
-            const [introVol, setIntroVol] = useState(parseFloat(localStorage.getItem('introVolume')||'0.5'));
-            const [outroVol, setOutroVol] = useState(parseFloat(localStorage.getItem('outroVolume')||'0.5'));
-            const [musicVol, setMusicVol] = useState(parseFloat(localStorage.getItem('musicVolume')||'0.1'));
-            const [selectedMusicIdx, setSelectedMusicIdx] = useState(parseInt(localStorage.getItem('selectedMusicIndex')||'-1'));
-            const [files, setFiles] = useState({ intro: null, outro: null, music: [null, null, null] });
-            
-            // UI State
-            const [loading, setLoading] = useState(false);
-            const [status, setStatus] = useState('');
-            const [audioUrl, setAudioUrl] = useState(null);
-            const [audioBlob, setAudioBlob] = useState(null);
-            const [previewId, setPreviewId] = useState(null);
-            const audioRef = useRef(null);
-            
-            // Email State
-            const [showEmail, setShowEmail] = useState(false);
-            const [emailTo, setEmailTo] = useState('');
-            const [emailSubj, setEmailSubj] = useState('');
-            const [emailBody, setEmailBody] = useState('');
-            const [sendingMail, setSendingMail] = useState(false);
-            const [mailSuccess, setMailSuccess] = useState(false);
-            const [saveSuccess, setSaveSuccess] = useState(false);
 
-            // Persistence Effects
-            useEffect(() => { localStorage.setItem('hostName', host); }, [host]);
-            useEffect(() => { localStorage.setItem('guestName', guest); }, [guest]);
-            useEffect(() => { localStorage.setItem('podcastTopic', topic); }, [topic]);
-            useEffect(() => { localStorage.setItem('useSearch', useSearch); }, [useSearch]);
-            useEffect(() => { localStorage.setItem('useRss', useRss); }, [useRss]);
-            useEffect(() => { localStorage.setItem('rssFeedsList', JSON.stringify(rssFeeds)); }, [rssFeeds]);
-            useEffect(() => { localStorage.setItem('systemInstruction', sysInstr); }, [sysInstr]);
-            useEffect(() => { localStorage.setItem('podcastScript', script); }, [script]);
-            useEffect(() => { localStorage.setItem('rssArticles', JSON.stringify(rssArticles)); }, [rssArticles]);
-            useEffect(() => { localStorage.setItem('searchSources', JSON.stringify(searchSources)); }, [searchSources]);
+            const [rssArticles, setRssArticles] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('rssArticles') || '[]'); } catch { return []; }
+            });
+            const [searchSources, setSearchSources] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('searchSources') || '[]'); } catch { return []; }
+            });
+
+            const [hostVoice, setHostVoice] = useState(localStorage.getItem('hostVoice') || VoiceName.Kore);
+            const [guestVoice, setGuestVoice] = useState(localStorage.getItem('guestVoice') || VoiceName.Puck);
+            const [files, setFiles] = useState({ intro: null, music: null, outro: null });
+            const [vols, setVols] = useState({ 
+                intro: parseFloat(localStorage.getItem('volIntro')||'0.5'), 
+                music: parseFloat(localStorage.getItem('volMusic')||'0.1'), 
+                outro: parseFloat(localStorage.getItem('volOutro')||'0.5') 
+            });
+            
+            const [loading, setLoading] = useState(false);
+            const [status, setStatus] = useState("");
+            const [audioUrl, setAudioUrl] = useState(null);
+            const [finalBlob, setFinalBlob] = useState(null);
+            
+            const [showEmail, setShowEmail] = useState(false);
+            const [emailTo, setEmailTo] = useState("");
+            const [emailStatus, setEmailStatus] = useState("");
+
+            useEffect(()=>localStorage.setItem('topic', topic),[topic]);
+            useEffect(()=>localStorage.setItem('host', host),[host]);
+            useEffect(()=>localStorage.setItem('guest', guest),[guest]);
+            useEffect(()=>localStorage.setItem('script', script),[script]);
+            useEffect(()=>localStorage.setItem('useSearch', useSearch),[useSearch]);
+            useEffect(()=>localStorage.setItem('useRss', useRss),[useRss]);
+            useEffect(()=>localStorage.setItem('rssList', JSON.stringify(rssFeeds)),[rssFeeds]);
+            useEffect(()=>localStorage.setItem('hostVoice', hostVoice),[hostVoice]);
+            useEffect(()=>localStorage.setItem('guestVoice', guestVoice),[guestVoice]);
+            useEffect(()=>localStorage.setItem('rssArticles', JSON.stringify(rssArticles)),[rssArticles]);
+            useEffect(()=>localStorage.setItem('searchSources', JSON.stringify(searchSources)),[searchSources]);
+            useEffect(()=>localStorage.setItem('volIntro', vols.intro),[vols.intro]);
+            useEffect(()=>localStorage.setItem('volMusic', vols.music),[vols.music]);
+            useEffect(()=>localStorage.setItem('volOutro', vols.outro),[vols.outro]);
 
             useEffect(() => {
-                const loadFiles = async () => {
-                    const i = await getFile('intro');
-                    const o = await getFile('outro');
-                    const m0 = await getFile('music_0');
-                    const m1 = await getFile('music_1');
-                    const m2 = await getFile('music_2');
-                    setFiles({ intro: i, outro: o, music: [m0, m1, m2] });
-                };
-                loadFiles();
+                (async()=>{
+                    const i = await getFileDB('intro'); if(i) setFiles(f=>({...f, intro:i}));
+                    const o = await getFileDB('outro'); if(o) setFiles(f=>({...f, outro:o}));
+                    const m = await getFileDB('music_0'); if(m) setFiles(f=>({...f, music:m}));
+                })();
             }, []);
 
-            const saveKeys = () => { localStorage.setItem('KEY_GOOGLE', googleKey); setShowKeys(false); };
-
-            const handleManualSave = () => {
-                localStorage.setItem('hostVoice', hostVoice);
-                localStorage.setItem('guestVoice', guestVoice);
-                localStorage.setItem('introVolume', introVol);
-                localStorage.setItem('outroVolume', outroVol);
-                localStorage.setItem('musicVolume', musicVol);
-                localStorage.setItem('selectedMusicIndex', selectedMusicIdx);
-                setSaveSuccess(true);
-                setTimeout(() => setSaveSuccess(false), 2000);
+            const handleFile = async (e, type) => { 
+                if(e.target.files[0]) {
+                    const f = e.target.files[0];
+                    setFiles(prev => ({...prev, [type]: {blob: f, name: f.name}}));
+                    const key = type === 'music' ? 'music_0' : type;
+                    await saveFileDB(key, f);
+                }
+            };
+            
+            const handleDeleteFile = async (type) => {
+                 const key = type === 'music' ? 'music_0' : type;
+                 await delFileDB(key);
+                 setFiles(prev => ({...prev, [type]: null}));
             };
 
-            // Logic
             const runScriptGen = async () => {
-                if(!topic || !host || !guest) return alert("Bitte alle Felder ausfüllen.");
-                setLoading(true);
+                if(!topic) return alert("Bitte Thema eingeben");
+                setLoading(true); setStatus("Analysiere Quellen...");
                 setRssArticles([]); setSearchSources([]);
                 
                 try {
-                    let prompt = `Thema: "${topic}"\nHost: ${host}, Gast: ${guest}\n`;
-                    let rssContent = "";
-                    
+                    let rssText = "";
                     if(useRss && rssFeeds.length) {
-                        setStatus("Lese RSS Feeds...");
                         const r = await fetchRssFeeds(rssFeeds);
-                        if(r.combinedContent) {
-                            rssContent = r.combinedContent;
-                            setRssArticles(r.articles);
-                            
-                            prompt += `\n===========================\nACHTUNG: RSS-MODUS.\n${rssContent}\n===========================\n`;
-                            prompt += `\nPRÜFUNG:\n1. DEDUPLIZIEREN.\n2. RELEVANZ FILTERN.\n3. NUR DIESE QUELLEN NUTZEN.\n4. QUELLEN VERBAL ZITIEREN.\n`;
-                        }
+                        rssText = r.combined;
+                        setRssArticles(r.articles);
+                        if(!rssText || rssText.length < 100) throw new Error("Keine RSS-Daten gefunden.");
                     }
                     
                     setStatus("Schreibe Skript...");
-                    const res = await generateScriptApi(googleKey, prompt, sysInstr, useSearch);
+                    const res = await generateScript(googleKey, topic, host, guest, useSearch, rssText, sysInstr);
                     setScript(res.script);
-                    setSearchSources(res.sources);
+                    if(res.searchSources) setSearchSources(res.searchSources);
                     setStatus("");
-                } catch(e) { alert("Fehler: " + e.message); }
-                setLoading(false);
-            };
-
-            const runVoicePreview = async (voice, id) => {
-                if(previewId === id) { audioRef.current?.pause(); setPreviewId(null); return; }
-                setStatus("Preview...");
-                try {
-                    const text = `Hallo, ich bin ${voice}.`;
-                    const b64 = await generateAudioApi(googleKey, text, {
-                        response_modalities: ["AUDIO"],
-                        speech_config: { voice_config: { prebuilt_voice_config: { voice_name: voice } } }
-                    });
-                    const ctx = new (window.AudioContext||window.webkitAudioContext)();
-                    const buf = await decodeBase64(b64, ctx);
-                    const wav = audioBufferToWav(buf);
-                    const url = URL.createObjectURL(wav);
-                    if(audioRef.current) audioRef.current.pause();
-                    const aud = new Audio(url);
-                    aud.onended = () => setPreviewId(null);
-                    aud.play();
-                    audioRef.current = aud;
-                    setPreviewId(id);
                 } catch(e) { alert(e.message); }
-                setStatus("");
+                setLoading(false);
             };
 
             const runAudioGen = async () => {
                 if(!script) return;
-                setLoading(true); setStatus("Generiere Stimmen...");
+                setLoading(true);
                 try {
+                    setStatus("Generiere Stimmen (Gemini)...");
                     const cleanScript = script.replace(/\*\*/g, '').replace(/\*/g, '');
-                    const b64 = await generateAudioApi(googleKey, cleanScript, {
-                        response_modalities: ["AUDIO"],
-                        speech_config: {
-                            multi_speaker_voice_config: {
-                                speaker_voice_configs: [
-                                    { speaker: host, voice_config: { prebuilt_voice_config: { voice_name: hostVoice } } },
-                                    { speaker: guest, voice_config: { prebuilt_voice_config: { voice_name: guestVoice } } }
-                                ]
-                            }
-                        }
-                    });
-
-                    setStatus("Mixing Audio...");
-                    const ctx = new (window.AudioContext||window.webkitAudioContext)();
-                    const vBuf = await decodeBase64(b64, ctx);
+                    
+                    const base64 = await generateAudioREST(googleKey, cleanScript, host, guest, hostVoice, guestVoice);
+                    
+                    setStatus("Mixing...");
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const vBuf = await decodeBase64(base64, ctx);
                     
                     const iBuf = files.intro ? await decodeBlob(files.intro.blob, ctx) : null;
+                    const mBuf = files.music ? await decodeBlob(files.music.blob, ctx) : null;
                     const oBuf = files.outro ? await decodeBlob(files.outro.blob, ctx) : null;
-                    const mBuf = (selectedMusicIdx >= 0 && files.music[selectedMusicIdx]) ? await decodeBlob(files.music[selectedMusicIdx].blob, ctx) : null;
-                    
-                    const mix = await mixAudio(vBuf, mBuf, iBuf, oBuf, { intro: introVol, outro: outroVol, music: musicVol });
+
+                    const mix = await mixAudio(vBuf, mBuf, iBuf, oBuf, vols);
                     const mp3 = bufferToMp3(mix);
-                    
-                    setAudioUrl(URL.createObjectURL(mp3));
-                    setAudioBlob(mp3);
+                    const url = URL.createObjectURL(mp3);
+                    setFinalBlob(mp3);
+                    setAudioUrl(url);
                     setStatus("");
-                } catch(e) { alert("Audio Fehler: " + e.message); }
+                } catch(e) { alert("Audio Error: " + e.message); }
                 setLoading(false);
             };
 
-            const openEmail = () => {
-                const d = new Date().toLocaleDateString('de-DE');
-                const subj = `AI-Podcast: ${topic.substring(0,30)}... - ${d}`;
-                let body = `Hallo,\n\nhier ist der Podcast zu "${topic}".\n\nSPRECHER: ${host} & ${guest}\nDATUM: ${d}\n\n`;
-                if(rssArticles.length) {
-                    body += "QUELLEN (RSS):\n";
-                    rssArticles.forEach(a => body += `- ${a.title} (${a.source})\n  ${a.link}\n`);
-                }
-                if(searchSources.length) {
-                     body += "\nQUELLEN (WEB):\n";
-                     searchSources.forEach(s => body += `- ${s.title}\n  ${s.uri}\n`);
-                }
-                setEmailSubj(subj); setEmailBody(body); setShowEmail(true);
-            };
-
             const sendEmail = async () => {
-                setSendingMail(true);
+                if(!emailTo || !finalBlob) return;
+                setEmailStatus("Sende...");
+                
                 try {
-                    const b64 = await blobToBase64(audioBlob);
-                    const payload = { to: emailTo, subject: emailSubj, body: emailBody, attachmentName: "podcast.mp3", attachmentBase64: b64 };
-                    try {
-                        await fetch(N8N_WEBHOOK_URL, { method:'POST', body:JSON.stringify(payload) });
-                    } catch(e) {
-                        await fetch(`https://corsproxy.io/?${encodeURIComponent(N8N_WEBHOOK_URL)}`, { method:'POST', body:JSON.stringify(payload) });
+                    const b64 = await blobToBase64(finalBlob);
+                    let srcTxt = "";
+                    if(rssArticles.length) rssArticles.forEach(a => srcTxt += `\n- ${a.title} (${a.source})\n  ${a.link}`);
+                    if(searchSources.length) searchSources.forEach(s => srcTxt += `\n- ${s.title}\n  ${s.uri}`);
+                    
+                    const payload = {
+                        to: emailTo,
+                        subject: `Podcast: ${topic}`,
+                        body: `Dein Podcast ist fertig.\n\nThema: ${topic}\n\nQuellen:${srcTxt}\n\nLG`,
+                        attachmentName: "podcast.mp3",
+                        attachmentBase64: b64
+                    };
+
+                    const proxy = `https://corsproxy.io/?${encodeURIComponent(N8N_WEBHOOK_URL)}`;
+                    const res = await fetch(proxy, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+                    
+                    if(res.ok) {
+                        setEmailStatus("Gesendet!");
+                        setTimeout(()=>setShowEmail(false), 1500);
+                    } else {
+                        throw new Error("Server Error");
                     }
-                    setMailSuccess(true);
-                    setTimeout(()=> { setShowEmail(false); setMailSuccess(false); }, 2000);
-                } catch(e) { alert("Send failed: " + e.message); }
-                setSendingMail(false);
-            };
-            
-            const upload = async (e, type, idx) => {
-                if(!e.target.files[0]) return;
-                const f = e.target.files[0];
-                if(type === 'music') {
-                    await storeFile(`music_${idx}`, f);
-                    const nm = [...files.music]; nm[idx] = {name:f.name, blob:f};
-                    setFiles({...files, music:nm});
-                    setSelectedMusicIdx(idx);
-                } else {
-                    await storeFile(type, f);
-                    setFiles({...files, [type]: {name:f.name, blob:f}});
-                }
-            };
-            
-            const remove = async (type, idx) => {
-                if(type === 'music') {
-                    await deleteFile(`music_${idx}`);
-                    const nm = [...files.music]; nm[idx] = null;
-                    setFiles({...files, music:nm});
-                    if(selectedMusicIdx === idx) setSelectedMusicIdx(-1);
-                } else {
-                    await deleteFile(type);
-                    setFiles({...files, [type]: null});
-                }
+                } catch(e) { setEmailStatus("Fehler: "+e.message); }
             };
 
             return (
-                <div className="container mx-auto max-w-[1200px] bg-white rounded-[16px] min-h-[calc(100vh-48px)] overflow-hidden shadow-sm border border-[rgba(0,0,0,0.05)]">
+                <div className="container mx-auto max-w-[1200px] bg-white rounded-[16px] min-h-screen shadow-sm border border-[rgba(0,0,0,0.05)]">
                     
-                    {/* HEADER */}
                     <div className="relative bg-white px-10 py-16 text-center border-b-2 border-[#c0ae66] rounded-t-[16px] overflow-hidden">
                         <div className="absolute inset-0 z-0 opacity-30" style={{backgroundImage: `url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 200"><path d="M0,50 Q300,100 600,50 T1200,50 L1200,0 L0,0 Z" fill="rgba(240,240,240,1)"/></svg>')`, backgroundRepeat: 'no-repeat', backgroundSize: 'cover'}} />
-                        <button onClick={()=>setShowKeys(true)} className="absolute top-5 right-8 bg-[#f9f9f9] border border-[rgba(0,0,0,0.05)] text-[#181818] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#e5e5e5] transition-all z-10">API Key</button>
+                        <button onClick={()=>setShowKeys(true)} className="absolute top-5 right-8 bg-[#f9f9f9] border border-[rgba(0,0,0,0.05)] text-[#181818] px-4 py-2 rounded-full text-sm font-medium hover:bg-[#e5e5e5] z-10">API Key</button>
                         <div className="relative z-10 flex flex-col items-center justify-center">
                            <img src="https://anyever.de/wp-content/themes/anyever/static/images/logo-anyever-gold.svg" alt="Logo" className="w-[200px] h-auto mb-2 opacity-95" />
                            <div className="text-sm font-medium tracking-[0.05em] text-[#181818] uppercase mt-1">ENJOY.AUDIO</div>
                            <h1 className="text-[2.5rem] font-[100] tracking-[4px] text-[#181818] mb-4">Podcast Generator</h1>
-                           <p className="text-[#717684] text-[1.1rem]">Was nur dich bewegt, an einem Ort.</p>
                         </div>
                     </div>
 
-                    {/* MAIN CONTENT */}
                     <div className="grid grid-cols-1 gap-8 p-8 lg:p-12 bg-[#f9f9f9]">
                         
-                        {/* API KEY MODAL */}
                         {showKeys && (
                             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                                 <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border-t-4 border-[#c0ae66]">
-                                    <h3 className="font-bold mb-4 text-lg text-[#181818]">Studio Setup</h3>
+                                    <h3 className="font-bold mb-4 text-lg">Studio Setup</h3>
                                     <div className="space-y-4">
-                                        <div><label className="block text-xs font-bold text-gray-500 mb-1">Google Gemini Key</label><input type="password" value={googleKey} onChange={e=>setGoogleKey(e.target.value)} className="w-full p-2 border rounded text-[#181818]" /></div>
-                                        <button onClick={saveKeys} className="btn-primary w-full py-3 rounded-xl font-bold text-sm">Speichern</button>
+                                        <div><label className="block text-xs font-bold text-gray-500 mb-1">Google Gemini Key</label><input type="password" value={googleKey} onChange={e=>setGoogleKey(e.target.value)} className="w-full p-2 border rounded" /></div>
+                                        <button onClick={()=>{localStorage.setItem('KEY_GOOGLE', googleKey); setShowKeys(false);}} className="btn-primary w-full py-3 rounded-xl font-bold text-sm">Speichern</button>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* SCRIPT SECTION */}
-                        <div className="card p-8 hover:shadow-lg transition-all">
+                        <div className="card p-8">
                             <div className="border-b border-[#c0ae66] pb-4 mb-6">
-                                <h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide"><Sparkles className="w-5 h-5 text-[#c0ae66]"/> SCHRITT 1: SKRIPT</h2>
-                                <p className="text-[#717684] text-sm mt-1">Wähle ein Thema und die Sprecher.</p>
+                                <h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide"><Sparkles className="w-5 h-5 text-[#c0ae66]" /> KONFIGURATION</h2>
                             </div>
+                            <div className="grid grid-cols-2 gap-6 mb-6">
+                                <div><label className="text-xs font-bold text-gray-500 uppercase">Host</label><input value={host} onChange={e=>setHost(e.target.value)} className="w-full rounded-xl py-3 px-4 mt-1"/></div>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase">Gast</label><input value={guest} onChange={e=>setGuest(e.target.value)} className="w-full rounded-xl py-3 px-4 mt-1"/></div>
+                            </div>
+                            <div className="mb-6"><label className="text-xs font-bold text-gray-500 uppercase">Thema</label><input value={topic} onChange={e=>setTopic(e.target.value)} className="w-full rounded-xl py-3 px-4 mt-1" placeholder="Thema eingeben..."/></div>
                             
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                <div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Name Sprecher 1</label><input value={host} onChange={e=>setHost(e.target.value)} className="w-full rounded-xl py-3 px-4 transition-all"/></div>
-                                <div><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Name Sprecher 2</label><input value={guest} onChange={e=>setGuest(e.target.value)} className="w-full rounded-xl py-3 px-4 transition-all"/></div>
-                            </div>
-                            <div className="mb-6"><label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Podcast Thema</label><input value={topic} onChange={e=>setTopic(e.target.value)} className="w-full rounded-xl py-3 px-4 transition-all"/></div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                                <label className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-colors ${useSearch?'border-[#c0ae66] bg-[#fcfcfc] shadow-sm':'bg-[#f9f9f9] hover:bg-[#f0f0f0] border-dashed'}`}>
-                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${useSearch?'bg-[#c0ae66] border-[#c0ae66]':'bg-white'}`}>{useSearch && <Globe className="w-3 h-3 text-white"/>}</div>
-                                    <input type="checkbox" checked={useSearch} onChange={e=>setUseSearch(e.target.checked)} className="hidden"/> 
-                                    <div><span className="text-sm font-medium block text-[#181818]">Google Search Grounding</span><span className="text-xs text-[#717684]">Echtzeit-Web-Infos nutzen</span></div>
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer ${useSearch ? 'border-[#c0ae66] bg-[#fcfcfc]' : 'bg-white border-dashed'}`}>
+                                    <input type="checkbox" checked={useSearch} onChange={e=>setUseSearch(e.target.checked)} className="accent-[#c0ae66]"/> <span className="text-sm">Google Search</span>
                                 </label>
-                                <label className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-colors ${useRss?'border-[#c0ae66] bg-[#fcfcfc] shadow-sm':'bg-[#f9f9f9] hover:bg-[#f0f0f0] border-dashed'}`}>
-                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${useRss?'bg-[#c0ae66] border-[#c0ae66]':'bg-white'}`}>{useRss && <Rss className="w-3 h-3 text-white"/>}</div>
-                                    <input type="checkbox" checked={useRss} onChange={e=>setUseRss(e.target.checked)} className="hidden"/> 
-                                    <div><span className="text-sm font-medium block text-[#181818]">RSS Feeds einbinden</span><span className="text-xs text-[#717684]">Deep Dive in Feed-Inhalte</span></div>
+                                <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer ${useRss ? 'border-[#c0ae66] bg-[#fcfcfc]' : 'bg-white border-dashed'}`}>
+                                    <input type="checkbox" checked={useRss} onChange={e=>setUseRss(e.target.checked)} className="accent-[#c0ae66]"/> <span className="text-sm">RSS Feeds</span>
                                 </label>
                             </div>
 
                             {useRss && (
-                                <div className="bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-6 shadow-sm mb-6">
-                                    <label className="block text-xs font-semibold text-[#c0ae66] uppercase tracking-wider border-b border-[#c0ae66] pb-2 mb-4">RSS Feeds verwalten</label>
+                                <div className="mb-6 bg-white p-4 rounded-xl border">
                                     <div className="flex gap-2 mb-4">
-                                        <input value={newRss} onChange={e=>setNewRss(e.target.value)} placeholder="https://example.com/feed.xml" className="flex-1 rounded-full px-4 py-2 text-sm border"/>
-                                        <button onClick={()=>{if(newRss){setRssFeeds([...rssFeeds, newRss]); setNewRss('');}}} className="btn-primary w-10 h-10 rounded-full flex items-center justify-center"><Plus size={18}/></button>
+                                        <input value={newRss} onChange={e=>setNewRss(e.target.value)} placeholder="RSS URL..." className="flex-1 p-2 border rounded-lg text-sm"/>
+                                        <button onClick={()=>{if(newRss){setRssFeeds([...rssFeeds, newRss]); setNewRss("");}}} className="bg-[#c0ae66] text-white px-4 rounded-lg"><Plus size={16}/></button>
                                     </div>
-                                    <ul className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                                        {rssFeeds.map((u,i)=><li key={i} className="flex justify-between items-center bg-[#f9f9f9] border border-gray-200 rounded-xl px-4 py-3 text-sm hover:border-[#c0ae66] transition-colors"><span className="truncate w-64 text-[#333]">{u}</span><button onClick={()=>{const n=[...rssFeeds]; n.splice(i,1); setRssFeeds(n);}} className="text-[#717684] hover:text-[#c0392b]"><Trash2 size={14}/></button></li>)}
-                                    </ul>
+                                    {rssFeeds.map((feed, i) => (
+                                        <div key={i} className="flex justify-between items-center text-xs p-2 bg-[#f9f9f9] mb-1 rounded">
+                                            <span className="truncate flex-1">{feed}</span>
+                                            <button onClick={()=>{const n=[...rssFeeds]; n.splice(i,1); setRssFeeds(n);}} className="text-red-400 ml-2"><Trash2 size={12}/></button>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
 
-                            <div className="flex justify-end mb-4"><button onClick={()=>setShowSettings(!showSettings)} className="text-xs text-[#717684] bg-[#f9f9f9] px-3 py-1.5 rounded-full border flex items-center gap-1 hover:text-[#181818]"><Settings size={12}/> {showSettings?'Einstellungen verbergen':'Erweiterte Einstellungen'} {showSettings?<ChevronUp size={12}/>:<ChevronDown size={12}/>}</button></div>
-                            {showSettings && <textarea value={sysInstr} onChange={e=>setSysInstr(e.target.value)} rows={6} className="w-full p-4 text-xs font-mono bg-[#f9f9f9] rounded-2xl mb-6 leading-relaxed" placeholder="System Prompt..."/>}
+                            <div className="flex justify-end mb-4"><button onClick={()=>setShowSettings(!showSettings)} className="text-xs text-gray-400 flex items-center gap-1"><Settings size={10}/> Prompt Einstellungen</button></div>
+                            {showSettings && <textarea value={sysInstr} onChange={e=>setSysInstr(e.target.value)} rows={4} className="w-full p-3 text-xs font-mono bg-gray-50 rounded-lg mb-6" placeholder="System Prompt..."/>}
 
-                            <button onClick={runScriptGen} disabled={loading} className="btn-primary w-full py-4 rounded-full font-bold text-sm flex justify-center items-center gap-2 uppercase tracking-widest">{loading && !script ? <Loader2 className="animate-spin"/> : <Sparkles/>} Skript Generieren</button>
+                            <button onClick={runScriptGen} disabled={loading} className="btn-primary w-full py-3 rounded-full font-bold text-sm flex justify-center items-center gap-2">
+                                {loading && !script ? <Loader2 className="animate-spin"/> : <Sparkles/>} Skript Generieren
+                            </button>
 
                             {script && (
-                                <div className="mt-8 pt-8 border-t border-[rgba(0,0,0,0.05)] animate-fade-in">
-                                    <div className="flex justify-between mb-4"><span className="text-xs font-medium text-[#181818] uppercase tracking-wider">Skript Editor</span><span className="text-xs text-[#717684] bg-[#f9f9f9] px-2 py-1 rounded border border-gray-200">Bearbeitbar</span></div>
-                                    <textarea value={script} onChange={e=>setScript(e.target.value)} className="w-full h-80 p-6 bg-white rounded-2xl border border-gray-200 text-[#333] font-mono leading-relaxed shadow-inner"/>
+                                <div className="mt-6 p-4 bg-[#f9f9f9] rounded-xl border">
+                                    <div className="flex justify-between mb-2"><span className="text-xs font-bold uppercase text-gray-400">Skript Vorschau</span></div>
+                                    <textarea value={script} onChange={e=>setScript(e.target.value)} className="w-full h-64 bg-transparent text-sm font-mono resize-none outline-none"/>
                                     
-                                    {(rssArticles.length>0 || searchSources.length>0) && (
-                                        <div className="mt-6 bg-[#f9f9f9] p-6 rounded-2xl border border-[rgba(0,0,0,0.05)]">
-                                            <h4 className="text-xs font-semibold text-[#c0ae66] uppercase tracking-wider mb-4 border-b border-[#c0ae66] pb-2 inline-block">Verwendete Quellen</h4>
-                                            <ul className="space-y-3">
-                                                {rssArticles.map((a,i)=><li key={`rss-${i}`} className="flex flex-col text-sm"><div className="flex items-center gap-2 font-medium text-[#181818]"><Rss className="w-3.5 h-3.5 text-[#c0ae66]"/> {a.title}</div><div className="pl-6 text-xs text-[#717684] flex items-center gap-2"><span className="uppercase font-semibold">{a.source}</span> • <a href={a.link} target="_blank" className="text-[#c0ae66] hover:underline flex items-center gap-1">Link öffnen <ExternalLink size={10}/></a></div></li>)}
-                                                {searchSources.map((s,i)=><li key={`web-${i}`} className="flex items-start gap-2 text-sm"><Globe className="w-3.5 h-3.5 text-[#c0ae66] mt-0.5"/><a href={s.uri} target="_blank" className="text-[#333] hover:text-[#c0ae66] hover:underline truncate">{s.title||s.uri}</a></li>)}
-                                            </ul>
+                                    {(rssArticles.length > 0 || searchSources.length > 0) && (
+                                        <div className="mt-4 pt-4 border-t">
+                                            <h4 className="text-xs font-bold text-[#c0ae66] mb-2">QUELLEN:</h4>
+                                            {rssArticles.map((a,i) => (
+                                                <div key={i} className="text-xs mb-1 flex items-center gap-2">
+                                                    <Rss size={10} className="text-[#c0ae66]"/> <span className="font-semibold">{a.source}:</span> <a href={a.link} target="_blank" className="text-gray-500 hover:underline truncate max-w-[300px]">{a.title}</a>
+                                                </div>
+                                            ))}
+                                            {searchSources.map((s,i) => (
+                                                <div key={i} className="text-xs mb-1 flex items-center gap-2">
+                                                    <Globe size={10} className="text-blue-400"/> <a href={s.uri} target="_blank" className="text-gray-500 hover:underline truncate max-w-[300px]">{s.title}</a>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
                             )}
                         </div>
 
-                        {/* AUDIO SECTION */}
-                        <div className={`card p-8 hover:shadow-lg transition-all ${!script ? 'opacity-50 pointer-events-none blur-[1px]':''}`}>
-                             <div className="border-b border-[#c0ae66] pb-4 mb-8 flex justify-between items-start">
-                                <div><h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide"><Volume2 className="w-5 h-5 text-[#c0ae66]"/> SCHRITT 2: AUDIO</h2><p className="text-[#717684] text-sm mt-1">Stimmen, Intro/Outro und Hintergrund-Atmosphäre festlegen.</p></div>
-                                <button onClick={handleManualSave} className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#f9f9f9] text-[#717684] hover:text-[#181818] hover:bg-white text-xs font-medium shadow-sm border">{saveSuccess ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-500"/><span className="text-green-500">Gespeichert</span></> : <><Save className="w-3.5 h-3.5"/> Speichern</>}</button>
+                        <div className={`card p-8 ${!script ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <div className="border-b border-[#c0ae66] pb-4 mb-6">
+                                <h2 className="text-xl font-medium text-[#181818] flex items-center gap-2 tracking-wide"><Volume2 className="w-5 h-5 text-[#c0ae66]" /> AUDIO DESIGN</h2>
                             </div>
 
-                            {/* Voices */}
+                            <div className="grid grid-cols-2 gap-6 mb-8">
+                                <div className="bg-[#f9f9f9] p-4 rounded-2xl border">
+                                    <label className="text-xs font-bold uppercase text-gray-500 block mb-2">{host}</label>
+                                    <select value={hostVoice} onChange={e=>setHostVoice(e.target.value)} className="w-full p-2 rounded border">
+                                        {Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                </div>
+                                <div className="bg-[#f9f9f9] p-4 rounded-2xl border">
+                                    <label className="text-xs font-bold uppercase text-gray-500 block mb-2">{guest}</label>
+                                    <select value={guestVoice} onChange={e=>setGuestVoice(e.target.value)} className="w-full p-2 rounded border">
+                                        {Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
                             <div className="space-y-4 mb-8">
-                                <h3 className="text-xs font-semibold text-[#181818] uppercase tracking-wider flex items-center gap-2"><Mic className="w-3.5 h-3.5 text-[#717684]"/> Stimmen-Besetzung</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {[
-                                        {who: host, val: hostVoice, set: setHostVoice, id: 'host'},
-                                        {who: guest, val: guestVoice, set: setGuestVoice, id: 'guest'}
-                                    ].map(p => (
-                                        <div key={p.id} className="bg-[#f9f9f9] p-4 rounded-2xl border border-gray-100">
-                                            <label className="text-xs font-medium text-[#717684] mb-2 uppercase block">{p.who}</label>
-                                            <div className="flex gap-3">
-                                                <select value={p.val} onChange={e=>p.set(e.target.value)} className="flex-1 appearance-none rounded-xl py-3 px-4 border border-gray-200 transition-all cursor-pointer">{Object.values(VoiceName).map(v=><option key={v} value={v}>{v}</option>)}</select>
-                                                <button onClick={()=>runVoicePreview(p.val, p.id)} className="w-12 bg-white border border-gray-200 hover:border-[#c0ae66] rounded-xl flex items-center justify-center shadow-sm text-[#181818]">{previewId===p.id?<Square size={14}/>:<Play size={14}/>}</button>
-                                            </div>
+                                {[
+                                    {id:'intro', l:'Intro', v:vols.intro},
+                                    {id:'music', l:'Musik', v:vols.music},
+                                    {id:'outro', l:'Outro', v:vols.outro}
+                                ].map(x => (
+                                    <div key={x.id} className="flex items-center gap-4 p-3 border border-dashed rounded-xl bg-[#f9f9f9]">
+                                        <span className="w-16 text-xs font-bold uppercase text-gray-500">{x.l}</span>
+                                        <div className="flex-1 flex gap-2">
+                                            <label className="flex-1 text-xs cursor-pointer bg-white border p-2 rounded truncate hover:border-[#c0ae66]">
+                                                {files[x.id] ? files[x.id].name : "Upload MP3..."}
+                                                <input type="file" accept="audio/*" className="hidden" onChange={e=>handleFile(e, x.id)}/>
+                                            </label>
+                                            {files[x.id] && <button onClick={()=>handleDeleteFile(x.id)} className="text-red-400 p-2"><Trash2 size={14}/></button>}
                                         </div>
-                                    ))}
-                                </div>
+                                        <div className="flex items-center gap-2 w-40">
+                                            <Volume2 size={14} className="text-gray-400"/>
+                                            <input type="range" min="0" max="1" step="0.1" value={x.v} onChange={e=>setVols({...vols, [x.id]:parseFloat(e.target.value)})} className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+                                            <span className="text-xs text-gray-500 w-8 text-right">{Math.round(x.v*100)}%</span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
-                            {/* Files */}
-                            <div className="space-y-4 mb-8">
-                                <h3 className="text-xs font-semibold text-[#181818] uppercase tracking-wider flex items-center gap-2"><Disc className="w-3.5 h-3.5 text-[#717684]"/> Intro & Outro</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {[
-                                        {id:'intro', label:'Intro', file:files.intro, vol:introVol, setVol:setIntroVol},
-                                        {id:'outro', label:'Outro', file:files.outro, vol:outroVol, setVol:setOutroVol}
-                                    ].map(x => (
-                                        <div key={x.id} className={`rounded-2xl p-5 border transition-colors ${x.file?'bg-[#fcfcfc] border-[#c0ae66]':'bg-[#f9f9f9] border-gray-100'}`}>
-                                            <div className="flex justify-between mb-3"><span className="text-sm font-medium text-[#181818]">{x.label}</span><div className="flex gap-2">{x.file && <><button onClick={()=>alert("Preview coming soon")} className="text-[#c0ae66]"><Play size={16}/></button><button onClick={()=>remove(x.id)} className="text-[#717684] hover:text-red-500"><Trash2 size={16}/></button></>}</div></div>
-                                            <label className="flex items-center gap-2 mb-4 cursor-pointer bg-white border border-gray-200 py-3 px-4 rounded-xl shadow-sm hover:border-[#c0ae66]"><span className="truncate text-xs text-[#717684] flex-1">{x.file?x.file.name:"Datei auswählen (MP3)..."}</span><input type="file" accept="audio/*" className="hidden" onChange={e=>upload(e, x.id)}/></label>
-                                            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200"><Volume2 className="w-3.5 h-3.5 text-[#717684]"/><input type="range" min="0" max="1.2" step="0.1" value={x.vol} onChange={e=>x.setVol(parseFloat(e.target.value))} className="w-full h-1 bg-[#e5e5e5] rounded-lg appearance-none cursor-pointer accent-[#c0ae66]"/><span className="text-[10px] text-[#717684] w-8 text-right font-mono">{Math.round(x.vol*100)}%</span></div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Music */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b border-gray-100 pb-2"><h3 className="text-xs font-semibold text-[#181818] uppercase tracking-wider flex items-center gap-2"><Music className="w-3.5 h-3.5 text-[#717684]"/> Hintergrund-Musik</h3>{selectedMusicIdx!==-1 && <div className="flex items-center gap-3"><Volume2 className="w-3.5 h-3.5 text-[#717684]"/><input type="range" min="0" max="0.5" step="0.01" value={musicVol} onChange={e=>setMusicVol(parseFloat(e.target.value))} className="w-24 h-1 bg-[#e5e5e5] rounded-lg accent-[#c0ae66]"/><span className="text-xs text-[#717684] font-mono">{Math.round(musicVol*100)}%</span></div>}</div>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                    <button onClick={()=>setSelectedMusicIdx(-1)} className={`p-4 rounded-2xl border text-left h-32 flex flex-col justify-center items-center transition-all ${selectedMusicIdx===-1?'bg-[rgba(192,174,102,0.1)] border-[#c0ae66] shadow-md':'bg-white border-gray-100 hover:border-[#c0ae66] text-[#717684]'}`}><div className={`text-sm font-medium ${selectedMusicIdx===-1?'text-[#c0ae66]':''}`}>Keine Musik</div><div className="text-[10px] opacity-70 mt-1">Nur Stimme</div></button>
-                                    {[0,1,2].map(i => (
-                                        <div key={i} className={`relative p-4 rounded-2xl border border-gray-100 h-32 flex flex-col justify-between transition-all ${selectedMusicIdx===i?'bg-[rgba(192,174,102,0.15)] border-[#c0ae66] shadow-md':'bg-white hover:shadow-lg'}`}>
-                                            {!files.music[i] ? (
-                                                <><div className="text-sm font-medium text-[#181818]">Musik {String.fromCharCode(65+i)}</div><label className="flex items-center justify-center gap-2 text-xs text-[#c0ae66] font-medium cursor-pointer w-full h-full border-2 border-dashed rounded-xl hover:border-[#c0ae66] mt-2"><Upload size={14}/> Upload<input type="file" accept="audio/*" className="hidden" onChange={e=>upload(e, 'music', i)}/></label></>
-                                            ) : (
-                                                <><div onClick={()=>setSelectedMusicIdx(i)} className="absolute inset-0 cursor-pointer z-0"/><div className="relative z-10 pointer-events-none"><div className="text-sm font-medium text-[#181818]">Musik {String.fromCharCode(65+i)}</div><div className="text-[11px] text-[#717684] truncate mt-1">{files.music[i].name}</div></div><div className="flex justify-between relative z-20 pt-2"><button className="w-8 h-8 bg-[#f1f5f9] rounded-full flex items-center justify-center hover:bg-[#c0ae66] hover:text-white transition-colors"><Play size={14}/></button><button onClick={(e)=>{e.stopPropagation(); remove('music', i);}} className="p-2 text-[#717684] hover:text-[#c0392b]"><Trash2 size={16}/></button></div></>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end pt-8">
-                                <button onClick={runAudioGen} disabled={loading} className="btn-primary flex items-center gap-3 px-10 py-5 rounded-full font-bold uppercase tracking-widest text-sm shadow-lg transform active:scale-95">{loading ? <><Loader2 className="animate-spin"/> Mixing Audio...</> : <><Music size={20}/> Podcast Generieren</>}</button>
-                            </div>
+                            <button onClick={runAudioGen} disabled={loading || !script} className="btn-primary w-full py-5 rounded-full font-bold uppercase tracking-widest text-sm flex items-center justify-center gap-2 shadow-lg">
+                                {loading && script ? <><Loader2 className="animate-spin"/> {status}</> : <><Music/> PODCAST PRODUZIEREN</>}
+                            </button>
 
                             {audioUrl && (
-                                <div className="mt-8 animate-fade-in">
-                                    <div className="bg-white rounded-2xl p-8 border border-[#c0ae66] shadow-[0_10px_30px_rgba(192,174,102,0.15)]">
-                                        <div className="flex justify-between items-center mb-6"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-full bg-[#f9f9f9] border border-[#c0ae66] flex items-center justify-center text-[#c0ae66]"><Music size={24}/></div><div><h3 className="text-[#181818] font-medium text-lg">Final Podcast</h3><p className="text-xs text-[#717684]">Ready for publishing</p></div></div><div className="flex gap-3"><button onClick={openEmail} className="flex items-center gap-2 px-5 py-2.5 bg-[#f9f9f9] hover:bg-[#e5e5e5] text-[#181818] rounded-full font-medium text-sm border border-gray-200"><Mail size={16}/> Email</button><a href={audioUrl} download="podcast.mp3" className="flex items-center gap-2 px-5 py-2.5 bg-[#181818] text-white rounded-full font-medium text-sm hover:bg-black"><Download size={16}/> Download</a></div></div>
-                                        <audio controls src={audioUrl} className="w-full accent-[#c0ae66] h-12"/>
+                                <div className="mt-8 animate-fade-in bg-[#fcfcfc] border border-[#c0ae66] p-6 rounded-2xl shadow-xl">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div><div className="font-bold text-[#181818] text-lg">Finaler Mixdown</div><div className="text-xs text-[#c0ae66] uppercase tracking-wider">Fertig</div></div>
+                                        <div className="flex gap-2">
+                                            <button onClick={()=>setShowEmail(true)} className="bg-gray-200 text-black px-4 py-2 rounded-full text-xs font-bold uppercase flex gap-2 items-center"><Mail size={14}/> Email</button>
+                                            <a href={audioUrl} download={`podcast_${new Date().toISOString().slice(0,10)}.mp3`} className="bg-[#181818] text-white px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider hover:bg-black flex gap-2 items-center shadow-md"><Download size={14}/> MP3</a>
+                                        </div>
                                     </div>
+                                    <audio controls src={audioUrl} className="w-full accent-[#c0ae66] h-10" />
                                 </div>
                             )}
                         </div>
                     </div>
-                    
-                    {/* EMAIL MODAL */}
+
                     {showEmail && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl animate-fade-in">
-                                <div className="flex justify-between p-6 border-b"><h3 className="text-lg font-medium flex items-center gap-2 text-[#181818]"><Mail className="text-[#c0ae66]"/> Podcast versenden</h3><button onClick={()=>setShowEmail(false)}><X className="text-gray-400 hover:text-black"/></button></div>
-                                <div className="p-8 space-y-6 bg-[#fcfcfc]">
-                                    <div><label className="block text-xs font-medium uppercase mb-2 text-[#181818]">An</label><input value={emailTo} onChange={e=>setEmailTo(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200"/></div>
-                                    <div><label className="block text-xs font-medium uppercase mb-2 text-[#181818]">Betreff</label><input value={emailSubj} onChange={e=>setEmailSubj(e.target.value)} className="w-full rounded-xl py-3 px-4 border border-gray-200"/></div>
-                                    <div><label className="block text-xs font-medium uppercase mb-2 text-[#181818]">Nachricht</label><textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={8} className="w-full rounded-xl py-3 px-4 font-mono text-sm border border-gray-200"/></div>
-                                </div>
-                                <div className="p-6 border-t flex justify-end gap-3 bg-white rounded-b-2xl">
-                                    <button onClick={()=>setShowEmail(false)} className="px-6 py-2.5 text-gray-500 font-medium">Abbrechen</button>
-                                    <button onClick={sendEmail} disabled={sendingMail} className="btn-primary px-8 py-2.5 rounded-full font-bold uppercase text-xs flex items-center gap-2">{sendingMail?<Loader2 className="animate-spin"/>:mailSuccess?<CheckCircle2/>:<Send/>} {mailSuccess?"Gesendet!":"Abschicken"}</button>
-                                </div>
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                            <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border-t-4 border-[#c0ae66]">
+                                <h3 className="font-bold mb-4 text-lg">Per Email versenden</h3>
+                                <input type="email" placeholder="Empfänger Email..." value={emailTo} onChange={e=>setEmailTo(e.target.value)} className="w-full p-3 rounded border mb-4"/>
+                                <button onClick={sendEmail} className="btn-primary w-full py-3 rounded-xl font-bold text-sm mb-2">{emailStatus || "Senden"}</button>
+                                <button onClick={()=>setShowEmail(false)} className="w-full text-xs text-gray-400">Abbrechen</button>
                             </div>
                         </div>
                     )}
-                    
+
                     <div className="text-center py-8 text-[#717684] text-xs bg-white border-t border-[rgba(0,0,0,0.05)]">Powered by Gemini 2.0 & ANY EVER Audio Engine</div>
                 </div>
             );
